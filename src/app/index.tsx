@@ -12,6 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { CreateReminderModal } from '@/components/reminders/create-reminder-modal';
 import { ReminderCard } from '@/components/reminders/reminder-card';
+import { TestNotificationCard } from '@/components/reminders/test-notification-card';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useReminders } from '@/hooks/use-reminders';
 import { Reminder } from '@/types/reminder';
@@ -88,6 +89,7 @@ export default function RemindersScreen() {
         <FlatList
           data={reminders}
           keyExtractor={(item) => item.id}
+          ListHeaderComponent={<TestNotificationCard />}
           renderItem={({ item }) => (
             <ReminderCard
               reminder={item}
