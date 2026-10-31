@@ -2,6 +2,13 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { AndroidImportance, SchedulableTriggerInputTypes } from 'expo-notifications';
 
+import { Reminder } from '@/types/reminder';
+import {
+  getLocalDateString,
+  parseLocalDateString,
+  parseTimeString,
+} from '@/utils/reminder-dates';
+
 export const ANDROID_CHANNEL_ID = 'recordatorios';
 export const ANDROID_CHANNEL_NAME = 'Recordatorios';
 
@@ -142,6 +149,194 @@ export async function scheduleTestNotification(
       errorMessage: message,
     };
   }
+}
+
+export interface ScheduleReminderResult {
+  success: boolean;
+  notificationId?: string;
+  error?: 'PERMISSION_DENIED' | 'PAST_DATETIME' | 'UNSUPPORTED_REPEAT_TYPE' | 'SCHEDULE_FAILED' | string;
+  errorMessage?: string;
+  permissionDenied?: boolean;
+}
+
+/**
+ * Programa la notificación para un recordatorio real de Remind.
+ * Soporta recordatorios de tipo 'once' (una sola vez) y 'daily' (diario).
+ */
+export async function scheduleReminderNotification(
+  reminder: Reminder
+): Promise<ScheduleReminderResult> {
+  try {
+    if (!reminder.isActive) {
+      return {
+        success: false,
+        error: 'REMINDER_INACTIVE',
+        errorMessage: 'El recordatorio no está activo.',
+      };
+    }
+
+    // 1. Asegurar el canal de notificación en Android
+    await setupNotificationChannel();
+
+    // 2. Comprobar permisos
+    const perms = await requestNotificationPermissions();
+    if (!perms.granted) {
+      return {
+        success: false,
+        permissionDenied: true,
+        error: 'PERMISSION_DENIED',
+        errorMessage:
+          'Los permisos de notificación están desactivados. El recordatorio se guardó sin alertas programadas.',
+      };
+    }
+
+    let trigger: Notifications.NotificationTriggerInput | null = null;
+
+    if (reminder.repeatType === 'once') {
+      const dateStr = reminder.targetDate || getLocalDateString();
+      const targetDate = parseLocalDateString(dateStr);
+      const parsedTime = parseTimeString(reminder.time);
+      targetDate.setHours(parsedTime.getHours(), parsedTime.getMinutes(), 0, 0);
+
+      // Si la fecha y hora ya pasaron, no se programa notificación
+      if (targetDate.getTime() <= Date.now()) {
+        return {
+          success: false,
+          error: 'PAST_DATETIME',
+          errorMessage: 'La fecha y hora del recordatorio ya han transcurrido.',
+        };
+      }
+
+      trigger = {
+        type: SchedulableTriggerInputTypes.DATE,
+        date: targetDate,
+        channelId: ANDROID_CHANNEL_ID,
+      };
+    } else if (reminder.repeatType === 'daily') {
+      const parsedTime = parseTimeString(reminder.time);
+      trigger = {
+        type: SchedulableTriggerInputTypes.DAILY,
+        hour: parsedTime.getHours(),
+        minute: parsedTime.getMinutes(),
+        channelId: ANDROID_CHANNEL_ID,
+      };
+    } else {
+      // Repeticiones semanales y mensuales reservadas para la siguiente etapa
+      return {
+        success: false,
+        error: 'UNSUPPORTED_REPEAT_TYPE',
+        errorMessage: 'Esta frecuencia no está configurada para notificaciones en esta versión.',
+      };
+    }
+
+    // 3. Programar la notificación en expo-notifications
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: reminder.title,
+        body: `Recordatorio programado para las ${reminder.time}`,
+        data: {
+          reminderId: reminder.id,
+          repeatType: reminder.repeatType,
+        },
+      },
+      trigger,
+    });
+
+    return {
+      success: true,
+      notificationId,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[scheduleReminderNotification] Fallo al programar recordatorio ${reminder.id}:`, message);
+    return {
+      success: false,
+      error: 'SCHEDULE_FAILED',
+      errorMessage: message,
+    };
+  }
+}
+
+/**
+ * Cancela la notificación asociada a un recordatorio si existe un ID válido.
+ */
+export async function cancelReminderNotification(notificationId?: string): Promise<boolean> {
+  if (!notificationId) {
+    return false;
+  }
+  return await cancelNotification(notificationId);
+}
+
+/**
+ * Sincroniza los recordatorios almacenados con las notificaciones actualmente
+ * programadas en el sistema. Asegura que los recordatorios activos tengan
+ * su notificación creada y los inactivos no tengan alertas pendientes.
+ */
+export async function reconcileScheduledNotifications(reminders: Reminder[]): Promise<Reminder[]> {
+  try {
+    const scheduled = await getAllScheduledNotifications();
+    const activeScheduledIds = new Set(scheduled.map((s) => s.identifier));
+
+    const updatedReminders: Reminder[] = [];
+
+    for (const reminder of reminders) {
+      const isSupportedType = reminder.repeatType === 'once' || reminder.repeatType === 'daily';
+
+      if (reminder.isActive && isSupportedType) {
+        // Si ya está activo y su notificación sigue registrada en el sistema, conservarlo
+        if (reminder.notificationId && activeScheduledIds.has(reminder.notificationId)) {
+          updatedReminders.push(reminder);
+        } else {
+          // Si no está registrado en el sistema, reprogramarlo
+          const res = await scheduleReminderNotification(reminder);
+          if (res.success && res.notificationId) {
+            updatedReminders.push({
+              ...reminder,
+              notificationId: res.notificationId,
+            });
+          } else {
+            updatedReminders.push({
+              ...reminder,
+              notificationId: undefined,
+            });
+          }
+        }
+      } else {
+        // Si está inactivo pero aún tiene notificación en el sistema, cancelarla
+        if (reminder.notificationId) {
+          if (activeScheduledIds.has(reminder.notificationId)) {
+            await cancelNotification(reminder.notificationId);
+          }
+          updatedReminders.push({
+            ...reminder,
+            notificationId: undefined,
+          });
+        } else {
+          updatedReminders.push(reminder);
+        }
+      }
+    }
+
+    return updatedReminders;
+  } catch (err) {
+    console.warn('[reconcileScheduledNotifications] Error durante la reconciliación:', err);
+    return reminders;
+  }
+}
+
+/**
+ * Obtiene un resumen estructurado de las notificaciones actualmente programadas.
+ * Útil para depuración y verificación.
+ */
+export async function getScheduledNotificationsReport(): Promise<
+  { id: string; title: string; trigger: unknown }[]
+> {
+  const all = await getAllScheduledNotifications();
+  return all.map((req) => ({
+    id: req.identifier,
+    title: req.content.title ?? '(Sin título)',
+    trigger: req.trigger,
+  }));
 }
 
 /**

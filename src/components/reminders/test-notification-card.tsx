@@ -12,6 +12,7 @@ import {
 import {
   addNotificationReceivedListener,
   cancelNotification,
+  getAllScheduledNotifications,
   scheduleTestNotification,
   setupNotificationChannel,
 } from '@/services/notification-service';
@@ -158,6 +159,32 @@ export function TestNotificationCard() {
     }
   };
 
+  const handleInspectScheduled = async () => {
+    const list = await getAllScheduledNotifications();
+    if (list.length === 0) {
+      Alert.alert(
+        'Notificaciones en el sistema',
+        'No hay ninguna notificación programada en el sistema actualmente.',
+        [{ text: 'Entendido' }]
+      );
+      return;
+    }
+
+    const itemsSummary = list
+      .map((item, index) => {
+        const title = item.content.title || '(Sin título)';
+        const idSnippet = item.identifier.slice(0, 8);
+        return `${index + 1}. "${title}" (ID: ${idSnippet}...)`;
+      })
+      .join('\n');
+
+    Alert.alert(
+      `Notificaciones programadas (${list.length})`,
+      itemsSummary,
+      [{ text: 'Cerrar' }]
+    );
+  };
+
   return (
     <View style={[styles.container, isDark ? styles.containerDark : styles.containerLight]}>
       {/* Cabecera de la tarjeta de prueba */}
@@ -215,11 +242,25 @@ export function TestNotificationCard() {
           ) : (
             <>
               <Text style={styles.actionButtonIcon}>🚀</Text>
-              <Text style={styles.actionButtonText}>Probar notificación</Text>
+              <Text style={styles.actionButtonText}>Probar notificación (60s)</Text>
             </>
           )}
         </Pressable>
       )}
+
+      {/* Botón de inspección de notificaciones programadas */}
+      <Pressable
+        accessibilityLabel="Ver notificaciones programadas en el sistema"
+        onPress={handleInspectScheduled}
+        style={({ pressed }) => [
+          styles.inspectButton,
+          isDark ? styles.inspectButtonDark : styles.inspectButtonLight,
+          pressed && styles.inspectButtonPressed,
+        ]}>
+        <Text style={[styles.inspectButtonText, isDark ? styles.inspectTextDark : styles.inspectTextLight]}>
+          🔍 Consultar notificaciones en el sistema
+        </Text>
+      </Pressable>
 
       {/* Mensaje de retroalimentación */}
       {statusMessage && (
@@ -332,6 +373,36 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  inspectButton: {
+    marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  inspectButtonLight: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
+  inspectButtonDark: {
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
+  },
+  inspectButtonPressed: {
+    opacity: 0.75,
+  },
+  inspectButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  inspectTextLight: {
+    color: '#334155',
+  },
+  inspectTextDark: {
+    color: '#CBD5E1',
   },
   scheduledBox: {
     flexDirection: 'row',
