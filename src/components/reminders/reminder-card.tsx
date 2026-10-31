@@ -12,6 +12,7 @@ import { Reminder, ReminderCategory } from '@/types/reminder';
 
 interface ReminderCardProps {
   reminder: Reminder;
+  onPress: (reminder: Reminder) => void;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
 }
@@ -62,16 +63,20 @@ const CATEGORY_CONFIG: Record<
   },
 };
 
-export function ReminderCard({ reminder, onToggle, onDelete }: ReminderCardProps) {
+export function ReminderCard({ reminder, onPress, onToggle, onDelete }: ReminderCardProps) {
   const isDark = useColorScheme() === 'dark';
   const categoryInfo = CATEGORY_CONFIG[reminder.category ?? 'general'];
 
   return (
-    <View
-      style={[
+    <Pressable
+      accessibilityLabel={`Recordatorio: ${reminder.title}. Toca para editar.`}
+      accessibilityRole="button"
+      onPress={() => onPress(reminder)}
+      style={({ pressed }) => [
         styles.card,
         isDark ? styles.cardDark : styles.cardLight,
         !reminder.isActive && styles.cardInactive,
+        pressed && styles.cardPressed,
       ]}>
       {/* Fila 1: Categoría a la izquierda, Estado + Switch + Eliminar a la derecha */}
       <View style={styles.topRow}>
@@ -90,7 +95,10 @@ export function ReminderCard({ reminder, onToggle, onDelete }: ReminderCardProps
           </Text>
         </View>
 
-        <View style={styles.actionsGroup}>
+        {/* Zona de controles interactivos con responder para evitar activar la edición al tocar el switch o borrar */}
+        <View
+          onStartShouldSetResponder={() => true}
+          style={styles.actionsGroup}>
           <Text style={[styles.statusText, isDark ? styles.statusTextDark : styles.statusTextLight]}>
             {reminder.isActive ? 'Activo' : 'Pausado'}
           </Text>
@@ -105,7 +113,10 @@ export function ReminderCard({ reminder, onToggle, onDelete }: ReminderCardProps
           <Pressable
             accessibilityLabel="Eliminar recordatorio"
             hitSlop={10}
-            onPress={() => onDelete(reminder.id)}
+            onPress={(e) => {
+              e.stopPropagation();
+              onDelete(reminder.id);
+            }}
             style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}>
             <Text style={[styles.deleteBtnText, isDark && styles.deleteBtnTextDark]}>✕</Text>
           </Pressable>
@@ -143,8 +154,17 @@ export function ReminderCard({ reminder, onToggle, onDelete }: ReminderCardProps
             {reminder.frequency}
           </Text>
         </View>
+
+        {/* Muestra los días específicos si están configurados y no repite el texto completo */}
+        {reminder.days && reminder.days.length > 0 && reminder.days.length < 7 && reminder.frequency !== reminder.days.join(' ') && (
+          <View style={[styles.metaPill, isDark ? styles.daysPillDark : styles.daysPillLight]}>
+            <Text style={[styles.daysText, isDark ? styles.daysTextDark : styles.daysTextLight]}>
+              {reminder.days.join(' ')}
+            </Text>
+          </View>
+        )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -171,6 +191,10 @@ const styles = StyleSheet.create({
   },
   cardInactive: {
     opacity: 0.65,
+  },
+  cardPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
   topRow: {
     flexDirection: 'row',
@@ -281,5 +305,21 @@ const styles = StyleSheet.create({
   },
   metaTextDark: {
     color: '#D1D5DB',
+  },
+  daysPillLight: {
+    backgroundColor: '#EEF2FF',
+  },
+  daysPillDark: {
+    backgroundColor: '#1E293B',
+  },
+  daysText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  daysTextLight: {
+    color: '#2563EB',
+  },
+  daysTextDark: {
+    color: '#93C5FD',
   },
 });

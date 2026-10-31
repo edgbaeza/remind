@@ -14,6 +14,7 @@ import { CreateReminderModal } from '@/components/reminders/create-reminder-moda
 import { ReminderCard } from '@/components/reminders/reminder-card';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useReminders } from '@/hooks/use-reminders';
+import { Reminder } from '@/types/reminder';
 
 export default function RemindersScreen() {
   const isDark = useColorScheme() === 'dark';
@@ -23,14 +24,39 @@ export default function RemindersScreen() {
     reminders,
     isLoading,
     addReminder,
+    updateReminder,
     toggleReminder,
     deleteReminder,
   } = useReminders();
 
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [reminderToEdit, setReminderToEdit] = useState<Reminder | null>(null);
 
   const activeCount = reminders.filter((r) => r.isActive).length;
   const bottomInset = Math.max(insets.bottom, 16);
+
+  const handleOpenCreate = () => {
+    setReminderToEdit(null);
+    setIsModalVisible(true);
+  };
+
+  const handleOpenEdit = (reminder: Reminder) => {
+    setReminderToEdit(reminder);
+    setIsModalVisible(true);
+  };
+
+  const handleSaveReminder = (reminderData: Omit<Reminder, 'id' | 'createdAt'>) => {
+    if (reminderToEdit) {
+      updateReminder(reminderToEdit.id, reminderData);
+    } else {
+      addReminder(reminderData);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setIsModalVisible(false);
+    setReminderToEdit(null);
+  };
 
   return (
     <SafeAreaView
@@ -58,13 +84,14 @@ export default function RemindersScreen() {
           </View>
         </View>
 
-        {/* Lista de recordatorios con espacio inferior suficiente para el botón flotante */}
+        {/* Lista de recordatorios */}
         <FlatList
           data={reminders}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <ReminderCard
               reminder={item}
+              onPress={handleOpenEdit}
               onToggle={toggleReminder}
               onDelete={deleteReminder}
             />
@@ -96,22 +123,23 @@ export default function RemindersScreen() {
           }
         />
 
-        {/* Botón Flotante para crear nuevo recordatorio - colocado en área segura */}
+        {/* Botón Flotante para crear nuevo recordatorio */}
         <View style={[styles.fabContainer, { bottom: bottomInset + 8 }]}>
           <Pressable
             accessibilityLabel="Crear nuevo recordatorio"
-            onPress={() => setIsModalVisible(true)}
+            onPress={handleOpenCreate}
             style={({ pressed }) => [styles.fabButton, pressed && styles.fabButtonPressed]}>
             <Text style={styles.fabIcon}>＋</Text>
             <Text style={styles.fabText}>Nuevo recordatorio</Text>
           </Pressable>
         </View>
 
-        {/* Modal con el formulario de creación */}
+        {/* Modal con el formulario de creación y edición */}
         <CreateReminderModal
           visible={isModalVisible}
-          onClose={() => setIsModalVisible(false)}
-          onSave={addReminder}
+          reminderToEdit={reminderToEdit}
+          onClose={handleCloseModal}
+          onSave={handleSaveReminder}
         />
       </View>
     </SafeAreaView>

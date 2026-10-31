@@ -7,6 +7,6 @@ export interface Reminder {
   frequency: string;
   isActive: boolean;
   category?: ReminderCategory;
+  days?: string[];
   createdAt: number;
 }
-

@@ -55,6 +55,21 @@ export function useReminders() {
     [isLoading]
   );
 
+  const updateReminder = useCallback(
+    async (id: string, updatedData: Partial<Omit<Reminder, 'id' | 'createdAt'>>) => {
+      if (isLoading) return;
+
+      setReminders((prev) => {
+        const updated = prev.map((item) =>
+          item.id === id ? { ...item, ...updatedData } : item
+        );
+        saveStoredReminders(updated);
+        return updated;
+      });
+    },
+    [isLoading]
+  );
+
   const toggleReminder = useCallback(
     async (id: string) => {
       if (isLoading) return;
@@ -87,6 +102,7 @@ export function useReminders() {
     reminders,
     isLoading,
     addReminder,
+    updateReminder,
     toggleReminder,
     deleteReminder,
   };

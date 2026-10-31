@@ -13,6 +13,7 @@ export const INITIAL_REMINDERS: Reminder[] = [
     frequency: 'Diariamente',
     isActive: true,
     category: 'salud',
+    days: ['D', 'L', 'M', 'X', 'J', 'V', 'S'],
     createdAt: 1,
   },
   {
@@ -22,6 +23,7 @@ export const INITIAL_REMINDERS: Reminder[] = [
     frequency: 'Martes y jueves',
     isActive: true,
     category: 'hogar',
+    days: ['M', 'J'],
     createdAt: 2,
   },
   {
