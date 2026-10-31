@@ -8,9 +8,8 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import * as Notifications from 'expo-notifications';
-
 import {
+  addNotificationReceivedListener,
   cancelNotification,
   scheduleTestNotification,
 } from '@/services/notification-service';
@@ -28,7 +27,7 @@ export function TestNotificationCard() {
 
   // Escucha cuando la notificación se recibe en primer plano
   useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener((notification) => {
+    const subscription = addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data;
       if (data && data.type === 'test_notification') {
         setStatusMessage({

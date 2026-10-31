@@ -141,6 +141,15 @@ export async function scheduleTestNotification(
 }
 
 /**
+ * Suscribe un listener que se ejecuta cuando se recibe una notificación mientras la app está abierta.
+ */
+export function addNotificationReceivedListener(
+  listener: (notification: Notifications.Notification) => void
+) {
+  return Notifications.addNotificationReceivedListener(listener);
+}
+
+/**
  * Cancela una notificación programada específica mediante su ID.
  */
 export async function cancelNotification(notificationId: string): Promise<boolean> {
