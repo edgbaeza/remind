@@ -23,12 +23,11 @@ import {
   ALL_DAYS,
   formatDateSpanish,
   formatDaysSummary,
-  formatTimeString,
   getEffectiveMonthlyDay,
   isDateTimeInPast,
-  parseTimeString,
   WEEK_DAYS,
 } from '@/utils/reminder-dates';
+import { WheelTimePicker } from './wheel-time-picker';
 
 interface CreateReminderModalProps {
   visible: boolean;
@@ -101,30 +100,13 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
   const [titleError, setTitleError] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Estados de pickers para fallback en iOS/Web
-  const [showIosTimePicker, setShowIosTimePicker] = useState(false);
+  // Estado para el selector de hora WheelTimePicker estilo Samsung One UI
+  const [showWheelPicker, setShowWheelPicker] = useState(false);
   const [showIosDatePicker, setShowIosDatePicker] = useState(false);
 
-  // Selector de Hora con display: 'spinner' nativo
+  // Abrir WheelTimePicker personalizado
   const handleOpenTimePicker = () => {
-    const currentDate = parseTimeString(time);
-
-    if (Platform.OS === 'android') {
-      DateTimePickerAndroid.open({
-        value: currentDate,
-        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
-          if (event.type === 'set' && selectedDate) {
-            setTime(formatTimeString(selectedDate));
-            if (validationError) setValidationError(null);
-          }
-        },
-        mode: 'time',
-        display: 'spinner',
-        is24Hour: false,
-      });
-    } else {
-      setShowIosTimePicker(true);
-    }
+    setShowWheelPicker(true);
   };
 
   // Selector de Calendario para "Una sola vez"
@@ -346,21 +328,17 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
               </View>
             </Pressable>
 
-            {/* Fallback para iOS / Web */}
-            {showIosTimePicker && Platform.OS !== 'android' && (
-              <View style={styles.iosPickerContainer}>
-                <DateTimePicker
-                  value={parseTimeString(time)}
-                  mode="time"
-                  display="spinner"
-                  is24Hour={false}
-                  onChange={(_event, date) => {
-                    setShowIosTimePicker(false);
-                    if (date) setTime(formatTimeString(date));
-                  }}
-                />
-              </View>
-            )}
+            {/* Selector de hora WheelTimePicker estilo Samsung One UI */}
+            <WheelTimePicker
+              visible={showWheelPicker}
+              initialTime={time}
+              onConfirm={(newTime) => {
+                setTime(newTime);
+                setShowWheelPicker(false);
+                if (validationError) setValidationError(null);
+              }}
+              onCancel={() => setShowWheelPicker(false)}
+            />
           </View>
 
           {/* ÚNICA Sección: Repetición */}
