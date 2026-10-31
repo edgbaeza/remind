@@ -147,7 +147,9 @@ export function ReminderCard({ reminder, onPress, onToggle, onDelete }: Reminder
         </View>
 
         <View style={[styles.metaPill, isDark ? styles.metaPillDark : styles.metaPillLight]}>
-          <Text style={styles.metaIcon}>🔄</Text>
+          <Text style={styles.metaIcon}>
+            {reminder.repeatType === 'once' || reminder.repeatType === 'monthly' ? '📅' : '🔄'}
+          </Text>
           <Text
             numberOfLines={1}
             style={[styles.metaText, isDark ? styles.metaTextDark : styles.metaTextLight]}>

@@ -18,7 +18,17 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Spacing } from '@/constants/theme';
-import { Reminder, ReminderCategory } from '@/types/reminder';
+import { Reminder, ReminderCategory, RepeatType } from '@/types/reminder';
+import {
+  ALL_DAYS,
+  formatDateSpanish,
+  formatDaysSummary,
+  formatTimeString,
+  getEffectiveMonthlyDay,
+  isDateTimeInPast,
+  parseTimeString,
+  WEEK_DAYS,
+} from '@/utils/reminder-dates';
 
 interface CreateReminderModalProps {
   visible: boolean;
@@ -26,27 +36,6 @@ interface CreateReminderModalProps {
   onSave: (reminder: Omit<Reminder, 'id' | 'createdAt'>) => void;
   reminderToEdit?: Reminder | null;
 }
-
-const ALL_DAYS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-
-const WEEK_DAYS: { key: string; label: string; full: string }[] = [
-  { key: 'D', label: 'D', full: 'Domingo' },
-  { key: 'L', label: 'L', full: 'Lunes' },
-  { key: 'M', label: 'M', full: 'Martes' },
-  { key: 'X', label: 'X', full: 'Miércoles' },
-  { key: 'J', label: 'J', full: 'Jueves' },
-  { key: 'V', label: 'V', full: 'Viernes' },
-  { key: 'S', label: 'S', full: 'Sábado' },
-];
-
-const FREQUENCY_PRESETS = [
-  'Diariamente',
-  'Lunes a viernes',
-  'Martes y jueves',
-  'Fines de semana',
-  'Días específicos',
-  'Día 15 del mes',
-];
 
 const CATEGORIES: { key: ReminderCategory; label: string; icon: string }[] = [
   { key: 'salud', label: 'Salud', icon: '💊' },
@@ -56,62 +45,12 @@ const CATEGORIES: { key: ReminderCategory; label: string; icon: string }[] = [
   { key: 'general', label: 'General', icon: '📌' },
 ];
 
-function getDaysSummary(days: string[]): string {
-  const ordered = ALL_DAYS.filter((d) => days.includes(d));
-  if (ordered.length === 7) return 'D L M X J V S';
-  if (ordered.length === 0) return 'Sin días seleccionados';
-  return ordered.join(' ');
-}
-
-function getDaysFromFrequency(freq: string): string[] {
-  const lower = freq.toLowerCase();
-  if (lower.includes('diaria') || lower.includes('todos los días')) {
-    return ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-  }
-  if (lower.includes('lunes a viernes') || lower.includes('laborales')) {
-    return ['L', 'M', 'X', 'J', 'V'];
-  }
-  if (lower.includes('martes y jueves')) {
-    return ['M', 'J'];
-  }
-  if (lower.includes('fin') || lower.includes('fines de semana')) {
-    return ['D', 'S'];
-  }
-  const matched = ALL_DAYS.filter((d) => freq.includes(d));
-  if (matched.length > 0) return matched;
-  return ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-}
-
-function parseTimeString(timeStr: string): Date {
-  const d = new Date();
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-  if (match) {
-    let hours = parseInt(match[1], 10);
-    const minutes = parseInt(match[2], 10);
-    const ampm = match[3]?.toUpperCase();
-
-    if (ampm === 'PM' && hours < 12) hours += 12;
-    if (ampm === 'AM' && hours === 12) hours = 0;
-
-    d.setHours(hours, minutes, 0, 0);
-  } else {
-    d.setHours(8, 0, 0, 0);
-  }
-  return d;
-}
-
-function formatTimeString(date: Date): string {
-  let hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-
-  hours = hours % 12;
-  hours = hours ? hours : 12;
-  const formattedHours = hours < 10 ? `0${hours}` : `${hours}`;
-  const formattedMinutes = minutes < 10 ? `0${minutes}` : `${minutes}`;
-
-  return `${formattedHours}:${formattedMinutes} ${ampm}`;
-}
+const REPEAT_OPTIONS: { key: RepeatType; label: string }[] = [
+  { key: 'once', label: 'Una sola vez' },
+  { key: 'daily', label: 'Todos los días' },
+  { key: 'weekly', label: 'Días específicos' },
+  { key: 'monthly', label: 'Mensualmente' },
+];
 
 interface FormContentProps {
   onClose: () => void;
@@ -124,21 +63,49 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
   const insets = useSafeAreaInsets();
   const isEditing = Boolean(reminderToEdit);
 
+  // Campos principales
   const [title, setTitle] = useState(reminderToEdit?.title ?? '');
   const [time, setTime] = useState(reminderToEdit?.time ?? '08:00 AM');
-  const [frequency, setFrequency] = useState(reminderToEdit?.frequency ?? 'Diariamente');
   const [category, setCategory] = useState<ReminderCategory>(
     reminderToEdit?.category ?? 'salud'
   );
-  const [selectedDays, setSelectedDays] = useState<string[]>(
-    reminderToEdit?.days ??
-      (reminderToEdit
-        ? getDaysFromFrequency(reminderToEdit.frequency)
-        : ['D', 'L', 'M', 'X', 'J', 'V', 'S'])
-  );
-  const [hasError, setHasError] = useState(false);
-  const [showIosPicker, setShowIosPicker] = useState(false);
 
+  // Tipo de repetición (migrado o por defecto)
+  const initialRepeatType: RepeatType =
+    reminderToEdit?.repeatType ??
+    (reminderToEdit?.frequency?.toLowerCase().includes('mes')
+      ? 'monthly'
+      : reminderToEdit?.days && reminderToEdit.days.length < 7
+      ? 'weekly'
+      : 'daily');
+
+  const [repeatType, setRepeatType] = useState<RepeatType>(initialRepeatType);
+
+  // Días para repetición semanal
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    reminderToEdit?.days ?? ['L', 'M', 'X', 'J', 'V']
+  );
+
+  // Día del mes para repetición mensual (1 - 31)
+  const [dayOfMonth, setDayOfMonth] = useState<number>(
+    reminderToEdit?.dayOfMonth ?? 15
+  );
+
+  // Fecha para "Una sola vez" (YYYY-MM-DD)
+  const todayFormatted = new Date().toISOString().split('T')[0];
+  const [targetDate, setTargetDate] = useState<string>(
+    reminderToEdit?.targetDate ?? todayFormatted
+  );
+
+  // Errores de validación
+  const [titleError, setTitleError] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Estados de pickers para fallback en iOS/Web
+  const [showIosTimePicker, setShowIosTimePicker] = useState(false);
+  const [showIosDatePicker, setShowIosDatePicker] = useState(false);
+
+  // Selector de Hora con display: 'spinner' nativo
   const handleOpenTimePicker = () => {
     const currentDate = parseTimeString(time);
 
@@ -148,13 +115,60 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
         onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
           if (event.type === 'set' && selectedDate) {
             setTime(formatTimeString(selectedDate));
+            if (validationError) setValidationError(null);
           }
         },
         mode: 'time',
+        display: 'spinner',
         is24Hour: false,
       });
     } else {
-      setShowIosPicker(true);
+      setShowIosTimePicker(true);
+    }
+  };
+
+  // Selector de Calendario para "Una sola vez"
+  const handleOpenCalendarOnce = () => {
+    const [y, m, d] = targetDate.split('-').map(Number);
+    const currentDate = new Date(y, m - 1, d);
+
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: currentDate,
+        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (event.type === 'set' && selectedDate) {
+            const formatted = selectedDate.toISOString().split('T')[0];
+            setTargetDate(formatted);
+            if (validationError) setValidationError(null);
+          }
+        },
+        mode: 'date',
+        display: 'calendar',
+      });
+    } else {
+      setShowIosDatePicker(true);
+    }
+  };
+
+  // Selector de Calendario para "Mensualmente" (elige día del mes 1..31)
+  const handleOpenCalendarMonthly = () => {
+    const today = new Date();
+    const currentDate = new Date(today.getFullYear(), today.getMonth(), Math.min(dayOfMonth, 28));
+
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: currentDate,
+        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (event.type === 'set' && selectedDate) {
+            setDayOfMonth(selectedDate.getDate());
+            if (validationError) setValidationError(null);
+          }
+        },
+        mode: 'date',
+        display: 'calendar',
+      });
+    } else {
+      setShowIosDatePicker(true);
     }
   };
 
@@ -166,55 +180,70 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
       nextDays = [...selectedDays, dayKey];
     }
     setSelectedDays(nextDays);
-
-    const ordered = ALL_DAYS.filter((d) => nextDays.includes(d));
-    if (ordered.length === 7) {
-      setFrequency('Diariamente');
-    } else if (ordered.join('') === 'LMXJV') {
-      setFrequency('Lunes a viernes');
-    } else if (ordered.join('') === 'MJ') {
-      setFrequency('Martes y jueves');
-    } else if (ordered.join('') === 'DS') {
-      setFrequency('Fines de semana');
-    } else {
-      setFrequency(ordered.length > 0 ? ordered.join(' ') : 'Días específicos');
-    }
-  };
-
-  const handleSelectPreset = (preset: string) => {
-    setFrequency(preset);
-    if (preset === 'Diariamente') {
-      setSelectedDays(['D', 'L', 'M', 'X', 'J', 'V', 'S']);
-    } else if (preset === 'Lunes a viernes') {
-      setSelectedDays(['L', 'M', 'X', 'J', 'V']);
-    } else if (preset === 'Martes y jueves') {
-      setSelectedDays(['M', 'J']);
-    } else if (preset === 'Fines de semana') {
-      setSelectedDays(['D', 'S']);
-    } else if (preset === 'Día 15 del mes') {
-      setSelectedDays([]);
+    if (validationError && nextDays.length > 0) {
+      setValidationError(null);
     }
   };
 
   const handleSubmit = () => {
+    // 1. Validar título
     if (!title.trim()) {
-      setHasError(true);
+      setTitleError(true);
       return;
+    }
+
+    // 2. Validar días si es semanal
+    if (repeatType === 'weekly' && selectedDays.length === 0) {
+      setValidationError('Debes seleccionar al menos un día de la semana.');
+      return;
+    }
+
+    // 3. Validar fecha y hora futura si es "Una sola vez"
+    if (repeatType === 'once') {
+      if (isDateTimeInPast(targetDate, time)) {
+        setValidationError(
+          'No puedes guardar un recordatorio en una fecha u hora que ya ha pasado.'
+        );
+        return;
+      }
+    }
+
+    // Construir texto legible de frecuencia para la tarjeta
+    let computedFrequency = 'Todos los días';
+    let computedDays: string[] | undefined;
+    let computedDayOfMonth: number | undefined;
+    let computedTargetDate: string | undefined;
+
+    if (repeatType === 'once') {
+      computedFrequency = `Una vez (${formatDateSpanish(targetDate)})`;
+      computedTargetDate = targetDate;
+    } else if (repeatType === 'daily') {
+      computedFrequency = 'Todos los días';
+      computedDays = ALL_DAYS;
+    } else if (repeatType === 'weekly') {
+      computedFrequency = formatDaysSummary(selectedDays);
+      computedDays = selectedDays;
+    } else if (repeatType === 'monthly') {
+      computedFrequency = `Cada día ${dayOfMonth} del mes`;
+      computedDayOfMonth = dayOfMonth;
     }
 
     onSave({
       title: title.trim(),
       time: time.trim() || '08:00 AM',
-      frequency: frequency.trim() || 'Diariamente',
+      frequency: computedFrequency,
+      repeatType,
+      days: computedDays,
+      dayOfMonth: computedDayOfMonth,
+      targetDate: computedTargetDate,
       category,
-      days: selectedDays.length > 0 ? selectedDays : undefined,
       isActive: reminderToEdit ? reminderToEdit.isActive : true,
     });
 
     onClose();
   };
 
-  const showDayPicker = frequency !== 'Día 15 del mes';
+  const effectiveMonthlyDay = getEffectiveMonthlyDay(dayOfMonth);
 
   return (
     <KeyboardAvoidingView
@@ -228,7 +257,7 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
           isDark ? styles.containerDark : styles.containerLight,
           { paddingBottom: Math.max(insets.bottom, 16) + 8 },
         ]}>
-        {/* Indicador superior de arrastre */}
+        {/* Indicador de arrastre */}
         <View style={styles.dragHandle} />
 
         <View style={styles.header}>
@@ -244,6 +273,13 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}>
+          {/* Mensaje de error general si aplica */}
+          {validationError && (
+            <View style={styles.validationErrorBox}>
+              <Text style={styles.validationErrorText}>⚠️ {validationError}</Text>
+            </View>
+          )}
+
           {/* Campo: Título */}
           <View style={styles.fieldGroup}>
             <Text style={[styles.fieldLabel, isDark ? styles.labelDark : styles.labelLight]}>
@@ -256,20 +292,20 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
               style={[
                 styles.input,
                 isDark ? styles.inputDark : styles.inputLight,
-                hasError && styles.inputError,
+                titleError && styles.inputError,
               ]}
               value={title}
               onChangeText={(text) => {
                 setTitle(text);
-                if (hasError && text.trim()) setHasError(false);
+                if (titleError && text.trim()) setTitleError(false);
               }}
             />
-            {hasError && (
+            {titleError && (
               <Text style={styles.errorText}>Por favor introduce un título para el recordatorio.</Text>
             )}
           </View>
 
-          {/* Campo: Selector de Hora Nativo Android */}
+          {/* Sección: Hora del Recordatorio */}
           <View style={styles.fieldGroup}>
             <Text style={[styles.fieldLabel, isDark ? styles.labelDark : styles.labelLight]}>
               Hora
@@ -280,7 +316,7 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
               onPress={handleOpenTimePicker}
               style={({ pressed }) => [
                 styles.timePickerCard,
-                isDark ? styles.timePickerCardDark : styles.timePickerCardLight,
+                isDark ? styles.cardElementDark : styles.cardElementLight,
                 pressed && styles.buttonPressed,
               ]}>
               <View style={styles.timeInfoRow}>
@@ -295,15 +331,23 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
                 </View>
               </View>
 
-              <View style={[styles.changeBadge, isDark ? styles.changeBadgeDark : styles.changeBadgeLight]}>
-                <Text style={[styles.changeBadgeText, isDark ? styles.changeBadgeTextDark : styles.changeBadgeTextLight]}>
+              <View
+                style={[
+                  styles.changeBadge,
+                  isDark ? styles.changeBadgeDark : styles.changeBadgeLight,
+                ]}>
+                <Text
+                  style={[
+                    styles.changeBadgeText,
+                    isDark ? styles.changeBadgeTextDark : styles.changeBadgeTextLight,
+                  ]}>
                   Ajustar
                 </Text>
               </View>
             </Pressable>
 
-            {/* Selector para iOS / fallback */}
-            {showIosPicker && Platform.OS !== 'android' && (
+            {/* Fallback para iOS / Web */}
+            {showIosTimePicker && Platform.OS !== 'android' && (
               <View style={styles.iosPickerContainer}>
                 <DateTimePicker
                   value={parseTimeString(time)}
@@ -311,7 +355,7 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
                   display="spinner"
                   is24Hour={false}
                   onChange={(_event, date) => {
-                    setShowIosPicker(false);
+                    setShowIosTimePicker(false);
                     if (date) setTime(formatTimeString(date));
                   }}
                 />
@@ -319,106 +363,202 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
             )}
           </View>
 
-          {/* Campo: Selector Visual de Días Estilo Android/Material */}
-          {showDayPicker && (
-            <View style={styles.fieldGroup}>
-              <View style={styles.dayHeaderRow}>
-                <Text style={[styles.fieldLabel, isDark ? styles.labelDark : styles.labelLight]}>
-                  Días de repetición
-                </Text>
-                <View
-                  style={[
-                    styles.daySummaryBadge,
-                    isDark ? styles.daySummaryBadgeDark : styles.daySummaryBadgeLight,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.daySummaryText,
-                      isDark ? styles.daySummaryTextDark : styles.daySummaryTextLight,
-                    ]}>
-                    {getDaysSummary(selectedDays)}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Fila de círculos D L M X J V S */}
-              <View style={styles.dayCirclesRow}>
-                {WEEK_DAYS.map((day) => {
-                  const isSelected = selectedDays.includes(day.key);
-                  return (
-                    <Pressable
-                      key={day.key}
-                      accessibilityLabel={day.full}
-                      onPress={() => handleToggleDay(day.key)}
-                      style={({ pressed }) => [
-                        styles.dayCircle,
-                        isSelected
-                          ? styles.dayCircleSelected
-                          : isDark
-                          ? styles.dayCircleDark
-                          : styles.dayCircleLight,
-                        pressed && styles.buttonPressed,
-                      ]}>
-                      <Text
-                        style={[
-                          styles.dayCircleText,
-                          isSelected
-                            ? styles.dayCircleTextSelected
-                            : isDark
-                            ? styles.dayCircleTextDark
-                            : styles.dayCircleTextLight,
-                        ]}>
-                        {day.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* Campo: Frecuencia / Presets */}
+          {/* ÚNICA Sección: Repetición */}
           <View style={styles.fieldGroup}>
             <Text style={[styles.fieldLabel, isDark ? styles.labelDark : styles.labelLight]}>
-              Frecuencia
+              Repetición
             </Text>
-            <TextInput
-              placeholder="Ej. Diariamente, cada dos días..."
-              placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
-              style={[styles.input, isDark ? styles.inputDark : styles.inputLight]}
-              value={frequency}
-              onChangeText={setFrequency}
-            />
-            <View style={styles.chipRow}>
-              {FREQUENCY_PRESETS.map((f) => {
-                const isSelected = frequency === f;
+
+            {/* 4 Opciones principales de repetición */}
+            <View style={styles.repeatOptionsGrid}>
+              {REPEAT_OPTIONS.map((opt) => {
+                const isSelected = repeatType === opt.key;
                 return (
                   <Pressable
-                    key={f}
-                    onPress={() => handleSelectPreset(f)}
-                    style={[
-                      styles.chip,
+                    key={opt.key}
+                    onPress={() => {
+                      setRepeatType(opt.key);
+                      if (validationError) setValidationError(null);
+                    }}
+                    style={({ pressed }) => [
+                      styles.repeatOptionChip,
                       isSelected
-                        ? styles.chipSelected
+                        ? styles.repeatOptionChipSelected
                         : isDark
-                        ? styles.chipDark
-                        : styles.chipLight,
+                        ? styles.cardElementDark
+                        : styles.cardElementLight,
+                      pressed && styles.buttonPressed,
                     ]}>
                     <Text
                       style={[
-                        styles.chipText,
+                        styles.repeatOptionText,
                         isSelected
-                          ? styles.chipTextSelected
+                          ? styles.repeatOptionTextSelected
                           : isDark
-                          ? styles.chipTextDark
-                          : styles.chipTextLight,
+                          ? styles.textDark
+                          : styles.textLight,
                       ]}>
-                      {f}
+                      {opt.label}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
+
+            {/* Subpantalla según la repetición elegida */}
+
+            {/* Caso 1: Una sola vez -> Selector de Fecha */}
+            {repeatType === 'once' && (
+              <View style={[styles.subSectionBox, isDark ? styles.cardElementDark : styles.cardElementLight]}>
+                <View style={styles.subSectionHeader}>
+                  <Text style={[styles.subSectionTitle, isDark ? styles.textDark : styles.textLight]}>
+                    Fecha del recordatorio
+                  </Text>
+                  <Text style={[styles.subSectionHelp, isDark ? styles.helperDark : styles.helperLight]}>
+                    No se repetirá
+                  </Text>
+                </View>
+
+                <Pressable
+                  onPress={handleOpenCalendarOnce}
+                  style={({ pressed }) => [
+                    styles.dateSelectBtn,
+                    isDark ? styles.innerButtonDark : styles.innerButtonLight,
+                    pressed && styles.buttonPressed,
+                  ]}>
+                  <Text style={styles.calendarIcon}>📅</Text>
+                  <Text style={[styles.dateSelectText, isDark ? styles.textDark : styles.textLight]}>
+                    {formatDateSpanish(targetDate)}
+                  </Text>
+                  <View style={styles.editDatePill}>
+                    <Text style={styles.editDatePillText}>Cambiar fecha</Text>
+                  </View>
+                </Pressable>
+              </View>
+            )}
+
+            {/* Caso 2: Todos los días -> Resumen directo sin círculos */}
+            {repeatType === 'daily' && (
+              <View style={[styles.subSectionBox, isDark ? styles.cardElementDark : styles.cardElementLight]}>
+                <View style={styles.dailyInfoRow}>
+                  <Text style={styles.dailyIcon}>🔄</Text>
+                  <View>
+                    <Text style={[styles.dailyTitle, isDark ? styles.textDark : styles.textLight]}>
+                      Repetición diaria
+                    </Text>
+                    <Text style={[styles.dailySubtitle, isDark ? styles.helperDark : styles.helperLight]}>
+                      Sonarás todos los días de la semana a las {time}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Caso 3: Días específicos de la semana -> Fila interactiva D L M X J V S (Estilo Samsung) */}
+            {repeatType === 'weekly' && (
+              <View style={[styles.subSectionBox, isDark ? styles.cardElementDark : styles.cardElementLight]}>
+                <View style={styles.weeklyHeaderRow}>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.weeklySummaryText, isDark ? styles.textDark : styles.textLight]}>
+                    {formatDaysSummary(selectedDays)}
+                  </Text>
+                  <Text style={styles.calendarIconSmall}>📅</Text>
+                </View>
+
+                {/* 7 círculos interactivos D L M X J V S */}
+                <View style={styles.dayCirclesRow}>
+                  {WEEK_DAYS.map((day) => {
+                    const isSelected = selectedDays.includes(day.key);
+                    return (
+                      <Pressable
+                        key={day.key}
+                        accessibilityLabel={day.full}
+                        onPress={() => handleToggleDay(day.key)}
+                        style={({ pressed }) => [
+                          styles.dayCircle,
+                          isSelected
+                            ? styles.dayCircleSelected
+                            : isDark
+                            ? styles.dayCircleUnselectedDark
+                            : styles.dayCircleUnselectedLight,
+                          pressed && styles.buttonPressed,
+                        ]}>
+                        <Text
+                          style={[
+                            styles.dayCircleText,
+                            isSelected
+                              ? styles.dayCircleTextSelected
+                              : isDark
+                              ? styles.textDark
+                              : styles.textLight,
+                          ]}>
+                          {day.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Caso 4: Mensualmente -> Selector de día 1..31 con calendario nativo */}
+            {repeatType === 'monthly' && (
+              <View style={[styles.subSectionBox, isDark ? styles.cardElementDark : styles.cardElementLight]}>
+                <View style={styles.subSectionHeader}>
+                  <Text style={[styles.subSectionTitle, isDark ? styles.textDark : styles.textLight]}>
+                    Repetición mensual
+                  </Text>
+                  <Text style={[styles.subSectionHelp, isDark ? styles.helperDark : styles.helperLight]}>
+                    Día {dayOfMonth} de cada mes
+                  </Text>
+                </View>
+
+                <Pressable
+                  onPress={handleOpenCalendarMonthly}
+                  style={({ pressed }) => [
+                    styles.dateSelectBtn,
+                    isDark ? styles.innerButtonDark : styles.innerButtonLight,
+                    pressed && styles.buttonPressed,
+                  ]}>
+                  <Text style={styles.calendarIcon}>📅</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.dateSelectText, isDark ? styles.textDark : styles.textLight]}>
+                      Cada día {dayOfMonth} del mes
+                    </Text>
+                    {effectiveMonthlyDay !== dayOfMonth && (
+                      <Text style={styles.effectiveDayNotice}>
+                        * En este mes se usará el día {effectiveMonthlyDay} (último día)
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.editDatePill}>
+                    <Text style={styles.editDatePillText}>Elegir en calendario</Text>
+                  </View>
+                </Pressable>
+              </View>
+            )}
+
+            {/* Fallback de selector de fecha iOS para Una sola vez / Mensual */}
+            {showIosDatePicker && Platform.OS !== 'android' && (
+              <View style={styles.iosPickerContainer}>
+                <DateTimePicker
+                  value={new Date()}
+                  mode="date"
+                  display="calendar"
+                  onChange={(_event, date) => {
+                    setShowIosDatePicker(false);
+                    if (date) {
+                      if (repeatType === 'once') {
+                        setTargetDate(date.toISOString().split('T')[0]);
+                      } else if (repeatType === 'monthly') {
+                        setDayOfMonth(date.getDate());
+                      }
+                    }
+                  }}
+                />
+              </View>
+            )}
           </View>
 
           {/* Campo: Categoría */}
@@ -438,8 +578,8 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
                       isSelected
                         ? styles.chipSelected
                         : isDark
-                        ? styles.chipDark
-                        : styles.chipLight,
+                        ? styles.cardElementDark
+                        : styles.cardElementLight,
                     ]}>
                     <Text style={styles.categoryChipIcon}>{cat.icon}</Text>
                     <Text
@@ -448,8 +588,8 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
                         isSelected
                           ? styles.chipTextSelected
                           : isDark
-                          ? styles.chipTextDark
-                          : styles.chipTextLight,
+                          ? styles.textDark
+                          : styles.textLight,
                       ]}>
                       {cat.label}
                     </Text>
@@ -516,7 +656,7 @@ export function CreateReminderModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
     justifyContent: 'flex-end',
   },
   backdropTouch: {
@@ -527,20 +667,20 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
-    maxHeight: '90%',
+    maxHeight: '92%',
   },
   containerLight: {
     backgroundColor: '#FFFFFF',
   },
   containerDark: {
-    backgroundColor: '#1C1F26',
+    backgroundColor: '#121418',
   },
   dragHandle: {
     width: 44,
     height: 5,
     borderRadius: 3,
     backgroundColor: '#9CA3AF',
-    opacity: 0.5,
+    opacity: 0.4,
     alignSelf: 'center',
     marginBottom: Spacing.three,
   },
@@ -576,6 +716,21 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: Spacing.four,
   },
+  validationErrorBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: Spacing.three,
+  },
+  validationErrorText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
   fieldGroup: {
     marginBottom: Spacing.three,
   },
@@ -603,8 +758,8 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   inputDark: {
-    backgroundColor: '#272B34',
-    borderColor: '#374151',
+    backgroundColor: '#1E222A',
+    borderColor: '#2F3542',
     color: '#F9FAFB',
   },
   inputError: {
@@ -616,22 +771,23 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: '500',
   },
+  cardElementLight: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderWidth: 1,
+  },
+  cardElementDark: {
+    backgroundColor: '#1C2028',
+    borderColor: '#2B323F',
+    borderWidth: 1,
+  },
   timePickerCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  timePickerCardLight: {
-    backgroundColor: '#F9FAFB',
-    borderColor: '#E5E7EB',
-  },
-  timePickerCardDark: {
-    backgroundColor: '#272B34',
-    borderColor: '#374151',
+    borderRadius: 16,
   },
   timeInfoRow: {
     flexDirection: 'row',
@@ -642,7 +798,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   timeDisplay: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
@@ -665,7 +821,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF2FF',
   },
   changeBadgeDark: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#262D3D',
   },
   changeBadgeText: {
     fontSize: 12,
@@ -682,74 +838,145 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.05)',
     borderRadius: 12,
   },
-  dayHeaderRow: {
+  repeatOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  repeatOptionChip: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+  },
+  repeatOptionChipSelected: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+    borderWidth: 1,
+  },
+  repeatOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  repeatOptionTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  subSectionBox: {
+    padding: 14,
+    borderRadius: 20,
+    marginTop: 4,
+  },
+  subSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
   },
-  daySummaryBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+  subSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
   },
-  daySummaryBadgeLight: {
-    backgroundColor: '#EEF2FF',
-  },
-  daySummaryBadgeDark: {
-    backgroundColor: '#1E293B',
-  },
-  daySummaryText: {
+  subSectionHelp: {
     fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
-  daySummaryTextLight: {
+  dateSelectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    gap: 10,
+  },
+  innerButtonLight: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    borderWidth: 1,
+  },
+  innerButtonDark: {
+    backgroundColor: '#242A36',
+    borderColor: '#374151',
+    borderWidth: 1,
+  },
+  calendarIcon: {
+    fontSize: 18,
+  },
+  calendarIconSmall: {
+    fontSize: 16,
+  },
+  dateSelectText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  editDatePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+  },
+  editDatePillText: {
+    fontSize: 11,
     color: '#2563EB',
+    fontWeight: '700',
   },
-  daySummaryTextDark: {
-    color: '#93C5FD',
+  effectiveDayNotice: {
+    fontSize: 11,
+    color: '#F59E0B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  dailyInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dailyIcon: {
+    fontSize: 22,
+  },
+  dailyTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  dailySubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  weeklyHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  weeklySummaryText: {
+    fontSize: 15,
+    fontWeight: '800',
+    flex: 1,
+    marginRight: 8,
   },
   dayCirclesRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
   },
   dayCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-  },
-  dayCircleLight: {
-    backgroundColor: '#F3F4F6',
-    borderColor: '#E5E7EB',
-  },
-  dayCircleDark: {
-    backgroundColor: '#262A34',
-    borderColor: '#374151',
   },
   dayCircleSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-    elevation: 2,
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    backgroundColor: '#818CF8', // Tono lavanda/azul suave como la referencia de Samsung
+  },
+  dayCircleUnselectedLight: {
+    backgroundColor: 'transparent',
+  },
+  dayCircleUnselectedDark: {
+    backgroundColor: 'transparent',
   },
   dayCircleText: {
     fontSize: 14,
     fontWeight: '700',
-  },
-  dayCircleTextLight: {
-    color: '#4B5563',
-  },
-  dayCircleTextDark: {
-    color: '#9CA3AF',
   },
   dayCircleTextSelected: {
     color: '#FFFFFF',
@@ -759,7 +986,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 10,
+    marginTop: 6,
   },
   chip: {
     flexDirection: 'row',
@@ -767,20 +994,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 10,
-    borderWidth: 1,
     gap: 4,
-  },
-  chipLight: {
-    backgroundColor: '#F3F4F6',
-    borderColor: '#E5E7EB',
-  },
-  chipDark: {
-    backgroundColor: '#272B34',
-    borderColor: '#374151',
   },
   chipSelected: {
     backgroundColor: '#EEF2FF',
     borderColor: '#6366F1',
+    borderWidth: 1,
   },
   categoryChipIcon: {
     fontSize: 13,
@@ -788,12 +1007,6 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 13,
     fontWeight: '500',
-  },
-  chipTextLight: {
-    color: '#4B5563',
-  },
-  chipTextDark: {
-    color: '#D1D5DB',
   },
   chipTextSelected: {
     color: '#4F46E5',

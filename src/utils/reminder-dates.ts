@@ -1,0 +1,128 @@
+export const ALL_DAYS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+
+export const WEEK_DAYS: { key: string; label: string; full: string; short: string }[] = [
+  { key: 'D', label: 'D', full: 'Domingo', short: 'Dom' },
+  { key: 'L', label: 'L', full: 'Lunes', short: 'Lun' },
+  { key: 'M', label: 'M', full: 'Martes', short: 'Mar' },
+  { key: 'X', label: 'X', full: 'Miércoles', short: 'Mié' },
+  { key: 'J', label: 'J', full: 'Jueves', short: 'Jue' },
+  { key: 'V', label: 'V', full: 'Viernes', short: 'Vie' },
+  { key: 'S', label: 'S', full: 'Sábado', short: 'Sáb' },
+];
+
+const DAY_NAMES_MAP: Record<string, string> = {
+  D: 'Dom',
+  L: 'Lun',
+  M: 'Mar',
+  X: 'Mié',
+  J: 'Jue',
+  V: 'Vie',
+  S: 'Sáb',
+};
+
+/**
+ * Genera el resumen en español de los días seleccionados tal como en la referencia.
+ * Ejemplo: "Cada Lun, Mar, Mié, Jue, Vie" o "Cada Mar, Jue" o "Todos los días".
+ */
+export function formatDaysSummary(days: string[]): string {
+  const ordered = ALL_DAYS.filter((d) => days.includes(d));
+  if (ordered.length === 7) return 'Todos los días';
+  if (ordered.length === 0) return 'Selecciona al menos un día';
+  if (ordered.join('') === 'LMXJV') return 'Cada Lun, Mar, Mié, Jue, Vie';
+  if (ordered.join('') === 'MJ') return 'Cada Mar, Jue';
+  if (ordered.join('') === 'DS') return 'Fines de semana (Sáb, Dom)';
+  return `Cada ${ordered.map((d) => DAY_NAMES_MAP[d] ?? d).join(', ')}`;
+}
+
+/**
+ * Si un mes no tiene el día seleccionado (por ejemplo el día 31 en febrero o abril),
+ * calcula el último día disponible de ese mes sin alterar el valor original guardado.
+ */
+export function getEffectiveMonthlyDay(
+  dayOfMonth: number,
+  year: number = new Date().getFullYear(),
+  month: number = new Date().getMonth()
+): number {
+  // Día 0 del mes siguiente nos da el último día del mes actual (1-indexado)
+  const lastDayOfCurrentMonth = new Date(year, month + 1, 0).getDate();
+  return Math.min(dayOfMonth, lastDayOfCurrentMonth);
+}
+
+/**
+ * Convierte una hora en formato "08:30 AM" o "8:30 PM" a objeto Date de hoy.
+ */
+export function parseTimeString(timeStr: string): Date {
+  const d = new Date();
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const ampm = match[3]?.toUpperCase();
+
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+
+    d.setHours(hours, minutes, 0, 0);
+  } else {
+    d.setHours(8, 0, 0, 0);
+  }
+  return d;
+}
+
+/**
+ * Formatea un objeto Date a string "08:00 AM".
+ */
+export function formatTimeString(date: Date): string {
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const formattedHours = hours < 10 ? `0${hours}` : `${hours}`;
+  const formattedMinutes = minutes < 10 ? `0${minutes}` : `${minutes}`;
+
+  return `${formattedHours}:${formattedMinutes} ${ampm}`;
+}
+
+/**
+ * Formatea una fecha YYYY-MM-DD a formato amigable en español.
+ * Ejemplo: "31 de oct. de 2026"
+ */
+export function formatDateSpanish(dateInput: string | Date): string {
+  const d = typeof dateInput === 'string' ? new Date(`${dateInput}T00:00:00`) : dateInput;
+  const meses = [
+    'ene',
+    'feb',
+    'mar',
+    'abr',
+    'may',
+    'jun',
+    'jul',
+    'ago',
+    'sep',
+    'oct',
+    'nov',
+    'dic',
+  ];
+  return `${d.getDate()} de ${meses[d.getMonth()]}. de ${d.getFullYear()}`;
+}
+
+/**
+ * Verifica si una fecha específica con hora ya ha pasado en el tiempo actual.
+ */
+export function isDateTimeInPast(dateString: string, timeString: string): boolean {
+  const [yearStr, monthStr, dayStr] = dateString.split('-');
+  if (!yearStr || !monthStr || !dayStr) return false;
+
+  const targetDate = new Date(
+    parseInt(yearStr, 10),
+    parseInt(monthStr, 10) - 1,
+    parseInt(dayStr, 10)
+  );
+
+  const parsedTime = parseTimeString(timeString);
+  targetDate.setHours(parsedTime.getHours(), parsedTime.getMinutes(), 0, 0);
+
+  return targetDate.getTime() <= Date.now();
+}
