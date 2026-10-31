@@ -67,7 +67,8 @@ export function useReminders() {
         tempReminder.isActive &&
         (tempReminder.repeatType === 'once' ||
           tempReminder.repeatType === 'daily' ||
-          tempReminder.repeatType === 'weekly');
+          tempReminder.repeatType === 'weekly' ||
+          tempReminder.repeatType === 'monthly');
 
       if (isSupported) {
         const scheduleRes = await scheduleReminderNotification(tempReminder);
@@ -123,7 +124,8 @@ export function useReminders() {
         mergedReminder.isActive &&
         (mergedReminder.repeatType === 'once' ||
           mergedReminder.repeatType === 'daily' ||
-          mergedReminder.repeatType === 'weekly');
+          mergedReminder.repeatType === 'weekly' ||
+          mergedReminder.repeatType === 'monthly');
 
       if (isSupported) {
         const scheduleRes = await scheduleReminderNotification(mergedReminder);
@@ -177,7 +179,8 @@ export function useReminders() {
         const isSupported =
           currentReminder.repeatType === 'once' ||
           currentReminder.repeatType === 'daily' ||
-          currentReminder.repeatType === 'weekly';
+          currentReminder.repeatType === 'weekly' ||
+          currentReminder.repeatType === 'monthly';
 
         if (isSupported) {
           const scheduleRes = await scheduleReminderNotification({

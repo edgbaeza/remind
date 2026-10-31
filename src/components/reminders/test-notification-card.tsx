@@ -13,9 +13,14 @@ import {
   addNotificationReceivedListener,
   cancelNotification,
   getAllScheduledNotifications,
+  getNextMonthlyTriggerDate,
   scheduleTestNotification,
   setupNotificationChannel,
 } from '@/services/notification-service';
+import {
+  calculateMonthlyOccurrences,
+  formatDateSpanish,
+} from '@/utils/reminder-dates';
 
 export function TestNotificationCard() {
   const isDark = useColorScheme() === 'dark';
@@ -174,7 +179,9 @@ export function TestNotificationCard() {
       .map((item, index) => {
         const title = item.content.title || '(Sin título)';
         const idSnippet = item.identifier.slice(0, 8);
-        const data = item.content.data as { repeatType?: string; dayKey?: string } | undefined;
+        const data = item.content.data as
+          | { repeatType?: string; dayKey?: string; dayOfMonth?: number; mode?: string }
+          | undefined;
         let tag = '';
         if (data?.repeatType === 'weekly' && data.dayKey) {
           tag = ` [Semanal • ${data.dayKey}]`;
@@ -182,6 +189,8 @@ export function TestNotificationCard() {
           tag = ' [Diario]';
         } else if (data?.repeatType === 'once') {
           tag = ' [Una vez]';
+        } else if (data?.repeatType === 'monthly') {
+          tag = data.mode === 'native_monthly' ? ` [Mensual • Día ${data.dayOfMonth}]` : ` [Mensual • D${data.dayOfMonth}]`;
         }
         return `${index + 1}. "${title}"${tag} (${idSnippet}...)`;
       })
@@ -191,6 +200,24 @@ export function TestNotificationCard() {
       `Notificaciones programadas (${list.length})`,
       itemsSummary,
       [{ text: 'Cerrar' }]
+    );
+  };
+
+  const handlePreviewMonthlyDates = async () => {
+    // 1. Próximas 6 fechas calculadas para día 31
+    const dates31 = calculateMonthlyOccurrences(31, '09:00 AM', 6);
+    const preview31 = dates31
+      .map((d, i) => `${i + 1}. ${formatDateSpanish(d)} (Día ${d.getDate()})`)
+      .join('\n');
+
+    // 2. Próximo disparo nativo para día 28
+    const next28 = await getNextMonthlyTriggerDate(28, '09:00 AM');
+    const preview28 = next28 ? formatDateSpanish(next28) : 'No disponible';
+
+    Alert.alert(
+      'Fechas mensuales calculadas',
+      `• Día 28 (Activador nativo):\nPróximo disparo: ${preview28}\n\n• Día 31 (Próximas 6 ocurrencias del horizonte):\n${preview31}\n\nNota: Los meses más cortos (ej. Feb o Abr) se ajustan al último día hábil del mes sin alterar el día 31 en meses posteriores.`,
+      [{ text: 'Entendido' }]
     );
   };
 
@@ -258,18 +285,33 @@ export function TestNotificationCard() {
       )}
 
       {/* Botón de inspección de notificaciones programadas */}
-      <Pressable
-        accessibilityLabel="Ver notificaciones programadas en el sistema"
-        onPress={handleInspectScheduled}
-        style={({ pressed }) => [
-          styles.inspectButton,
-          isDark ? styles.inspectButtonDark : styles.inspectButtonLight,
-          pressed && styles.inspectButtonPressed,
-        ]}>
-        <Text style={[styles.inspectButtonText, isDark ? styles.inspectTextDark : styles.inspectTextLight]}>
-          🔍 Consultar notificaciones en el sistema
-        </Text>
-      </Pressable>
+      <View style={styles.toolsRow}>
+        <Pressable
+          accessibilityLabel="Ver notificaciones programadas en el sistema"
+          onPress={handleInspectScheduled}
+          style={({ pressed }) => [
+            styles.inspectButton,
+            isDark ? styles.inspectButtonDark : styles.inspectButtonLight,
+            pressed && styles.inspectButtonPressed,
+          ]}>
+          <Text style={[styles.inspectButtonText, isDark ? styles.inspectTextDark : styles.inspectTextLight]}>
+            🔍 Consultar en el sistema
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityLabel="Previsualizar próximas 6 fechas calculadas para recordatorios mensuales"
+          onPress={handlePreviewMonthlyDates}
+          style={({ pressed }) => [
+            styles.inspectButton,
+            isDark ? styles.inspectButtonDark : styles.inspectButtonLight,
+            pressed && styles.inspectButtonPressed,
+          ]}>
+          <Text style={[styles.inspectButtonText, isDark ? styles.inspectTextDark : styles.inspectTextLight]}>
+            📅 Fechas mensuales (28-31)
+          </Text>
+        </Pressable>
+      </View>
 
       {/* Mensaje de retroalimentación */}
       {statusMessage && (
@@ -383,12 +425,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  inspectButton: {
+  toolsRow: {
+    flexDirection: 'row',
+    gap: 8,
     marginTop: 8,
+  },
+  inspectButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: 8,
     borderWidth: 1,
   },

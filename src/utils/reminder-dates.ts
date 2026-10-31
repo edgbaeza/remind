@@ -74,6 +74,56 @@ export function getEffectiveMonthlyDay(
 }
 
 /**
+ * Calcula las próximas fechas concretas para un recordatorio mensual de día específico
+ * (especialmente para días variables 29, 30 y 31) a lo largo de un horizonte de meses.
+ * Si un mes tiene menos días, ajusta al último día disponible de ese mes sin alterar
+ * el día original para los meses posteriores.
+ * Utiliza exclusivamente el calendario y la hora local sin sesgos UTC.
+ */
+export function calculateMonthlyOccurrences(
+  dayOfMonth: number,
+  timeStr: string,
+  monthsCount: number = 24,
+  fromDate: Date = new Date()
+): Date[] {
+  const occurrences: Date[] = [];
+  const parsedTime = parseTimeString(timeStr);
+  const targetHour = parsedTime.getHours();
+  const targetMinute = parsedTime.getMinutes();
+
+  const startYear = fromDate.getFullYear();
+  const startMonth = fromDate.getMonth();
+
+  let offset = 0;
+  // Buscamos hasta cubrir monthsCount ocurrencias futuras
+  while (occurrences.length < monthsCount && offset < monthsCount + 3) {
+    const curDate = new Date(startYear, startMonth + offset, 1);
+    const y = curDate.getFullYear();
+    const m = curDate.getMonth();
+
+    const effectiveDay = getEffectiveMonthlyDay(dayOfMonth, y, m);
+    const candidate = new Date(y, m, effectiveDay, targetHour, targetMinute, 0, 0);
+
+    // Solo incluimos ocurrencias estrictamente futuras respecto a fromDate
+    if (candidate.getTime() > fromDate.getTime()) {
+      occurrences.push(candidate);
+    }
+    offset++;
+  }
+
+  return occurrences;
+}
+
+/**
+ * Formatea una lista de ocurrencias mensuales para inspección diagnóstica.
+ */
+export function formatMonthlyOccurrencePreview(dates: Date[]): string[] {
+  return dates.map((d) => {
+    return `${formatDateSpanish(d)} a las ${formatTimeString(d)}`;
+  });
+}
+
+/**
  * Convierte una hora en formato "08:30 AM" o "8:30 PM" a objeto Date de hoy.
  */
 export function parseTimeString(timeStr: string): Date {
