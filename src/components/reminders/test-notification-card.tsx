@@ -174,7 +174,16 @@ export function TestNotificationCard() {
       .map((item, index) => {
         const title = item.content.title || '(Sin título)';
         const idSnippet = item.identifier.slice(0, 8);
-        return `${index + 1}. "${title}" (ID: ${idSnippet}...)`;
+        const data = item.content.data as { repeatType?: string; dayKey?: string } | undefined;
+        let tag = '';
+        if (data?.repeatType === 'weekly' && data.dayKey) {
+          tag = ` [Semanal • ${data.dayKey}]`;
+        } else if (data?.repeatType === 'daily') {
+          tag = ' [Diario]';
+        } else if (data?.repeatType === 'once') {
+          tag = ' [Una vez]';
+        }
+        return `${index + 1}. "${title}"${tag} (${idSnippet}...)`;
       })
       .join('\n');
 

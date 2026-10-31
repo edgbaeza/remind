@@ -21,6 +21,31 @@ const DAY_NAMES_MAP: Record<string, string> = {
 };
 
 /**
+ * Conversión de claves de días ('D', 'L', 'M', 'X', 'J', 'V', 'S')
+ * al formato esperado por Expo Notifications en triggers semanales,
+ * donde Domingo = 1 y Sábado = 7.
+ */
+export const DAY_KEY_TO_EXPO_WEEKDAY: Record<string, number> = {
+  D: 1, // Domingo
+  L: 2, // Lunes
+  M: 3, // Martes
+  X: 4, // Miércoles
+  J: 5, // Jueves
+  V: 6, // Viernes
+  S: 7, // Sábado
+};
+
+export const EXPO_WEEKDAY_TO_NAME: Record<number, string> = {
+  1: 'Domingo',
+  2: 'Lunes',
+  3: 'Martes',
+  4: 'Miércoles',
+  5: 'Jueves',
+  6: 'Viernes',
+  7: 'Sábado',
+};
+
+/**
  * Genera el resumen en español de los días seleccionados tal como en la referencia.
  * Ejemplo: "Cada Lun, Mar, Mié, Jue, Vie" o "Cada Mar, Jue" o "Todos los días".
  */

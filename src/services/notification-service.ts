@@ -4,6 +4,7 @@ import { AndroidImportance, SchedulableTriggerInputTypes } from 'expo-notificati
 
 import { Reminder } from '@/types/reminder';
 import {
+  DAY_KEY_TO_EXPO_WEEKDAY,
   getLocalDateString,
   parseLocalDateString,
   parseTimeString,
@@ -153,15 +154,33 @@ export async function scheduleTestNotification(
 
 export interface ScheduleReminderResult {
   success: boolean;
-  notificationId?: string;
-  error?: 'PERMISSION_DENIED' | 'PAST_DATETIME' | 'UNSUPPORTED_REPEAT_TYPE' | 'SCHEDULE_FAILED' | string;
+  notificationId?: string; // Primer identificador programado (compatibilidad)
+  notificationIds?: string[]; // Todos los identificadores generados
+  error?: 'PERMISSION_DENIED' | 'PAST_DATETIME' | 'NO_DAYS_SELECTED' | 'UNSUPPORTED_REPEAT_TYPE' | 'SCHEDULE_FAILED' | string;
   errorMessage?: string;
   permissionDenied?: boolean;
 }
 
 /**
+ * Obtiene todos los IDs de notificación de un recordatorio,
+ * unificando notificationIds y el notificationId clásico.
+ */
+export function getReminderNotificationIds(reminder: Reminder): string[] {
+  if (reminder.notificationIds && Array.isArray(reminder.notificationIds) && reminder.notificationIds.length > 0) {
+    return reminder.notificationIds.filter((id) => typeof id === 'string' && id.length > 0);
+  }
+  if (reminder.notificationId && typeof reminder.notificationId === 'string' && reminder.notificationId.length > 0) {
+    return [reminder.notificationId];
+  }
+  return [];
+}
+
+/**
  * Programa la notificación para un recordatorio real de Remind.
- * Soporta recordatorios de tipo 'once' (una sola vez) y 'daily' (diario).
+ * Soporta recordatorios de tipo:
+ * - 'once': una sola vez (trigger de fecha/hora exacta)
+ * - 'daily': diario (trigger que se repite cada día a la hora fijada)
+ * - 'weekly': semanal personalizado (un trigger por cada día seleccionado en days)
  */
 export async function scheduleReminderNotification(
   reminder: Reminder
@@ -190,8 +209,7 @@ export async function scheduleReminderNotification(
       };
     }
 
-    let trigger: Notifications.NotificationTriggerInput | null = null;
-
+    // Caso 1: Una sola vez ('once')
     if (reminder.repeatType === 'once') {
       const dateStr = reminder.targetDate || getLocalDateString();
       const targetDate = parseLocalDateString(dateStr);
@@ -207,44 +225,121 @@ export async function scheduleReminderNotification(
         };
       }
 
-      trigger = {
-        type: SchedulableTriggerInputTypes.DATE,
-        date: targetDate,
-        channelId: ANDROID_CHANNEL_ID,
-      };
-    } else if (reminder.repeatType === 'daily') {
-      const parsedTime = parseTimeString(reminder.time);
-      trigger = {
-        type: SchedulableTriggerInputTypes.DAILY,
-        hour: parsedTime.getHours(),
-        minute: parsedTime.getMinutes(),
-        channelId: ANDROID_CHANNEL_ID,
-      };
-    } else {
-      // Repeticiones semanales y mensuales reservadas para la siguiente etapa
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: reminder.title,
+          body: `Recordatorio programado para las ${reminder.time}`,
+          data: {
+            reminderId: reminder.id,
+            repeatType: reminder.repeatType,
+          },
+        },
+        trigger: {
+          type: SchedulableTriggerInputTypes.DATE,
+          date: targetDate,
+          channelId: ANDROID_CHANNEL_ID,
+        },
+      });
+
       return {
-        success: false,
-        error: 'UNSUPPORTED_REPEAT_TYPE',
-        errorMessage: 'Esta frecuencia no está configurada para notificaciones en esta versión.',
+        success: true,
+        notificationId,
+        notificationIds: [notificationId],
       };
     }
 
-    // 3. Programar la notificación en expo-notifications
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: `Recordatorio programado para las ${reminder.time}`,
-        data: {
-          reminderId: reminder.id,
-          repeatType: reminder.repeatType,
+    // Caso 2: Diario ('daily')
+    if (reminder.repeatType === 'daily') {
+      const parsedTime = parseTimeString(reminder.time);
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: reminder.title,
+          body: `Recordatorio diario a las ${reminder.time}`,
+          data: {
+            reminderId: reminder.id,
+            repeatType: reminder.repeatType,
+          },
         },
-      },
-      trigger,
-    });
+        trigger: {
+          type: SchedulableTriggerInputTypes.DAILY,
+          hour: parsedTime.getHours(),
+          minute: parsedTime.getMinutes(),
+          channelId: ANDROID_CHANNEL_ID,
+        },
+      });
 
+      return {
+        success: true,
+        notificationId,
+        notificationIds: [notificationId],
+      };
+    }
+
+    // Caso 3: Semanal personalizado ('weekly')
+    if (reminder.repeatType === 'weekly') {
+      const selectedDays = reminder.days || [];
+      if (selectedDays.length === 0) {
+        return {
+          success: false,
+          error: 'NO_DAYS_SELECTED',
+          errorMessage: 'No se han seleccionado días de la semana para este recordatorio.',
+        };
+      }
+
+      const parsedTime = parseTimeString(reminder.time);
+      const hour = parsedTime.getHours();
+      const minute = parsedTime.getMinutes();
+      const scheduledIds: string[] = [];
+
+      for (const dayKey of selectedDays) {
+        const expoWeekday = DAY_KEY_TO_EXPO_WEEKDAY[dayKey];
+        if (expoWeekday === undefined) {
+          continue;
+        }
+
+        const id = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: reminder.title,
+            body: `Recordatorio semanal (${dayKey}) a las ${reminder.time}`,
+            data: {
+              reminderId: reminder.id,
+              repeatType: 'weekly',
+              dayKey,
+              weekday: expoWeekday,
+            },
+          },
+          trigger: {
+            type: SchedulableTriggerInputTypes.WEEKLY,
+            weekday: expoWeekday,
+            hour,
+            minute,
+            channelId: ANDROID_CHANNEL_ID,
+          },
+        });
+
+        scheduledIds.push(id);
+      }
+
+      if (scheduledIds.length === 0) {
+        return {
+          success: false,
+          error: 'SCHEDULE_FAILED',
+          errorMessage: 'No fue posible programar los días semanales seleccionados.',
+        };
+      }
+
+      return {
+        success: true,
+        notificationId: scheduledIds[0],
+        notificationIds: scheduledIds,
+      };
+    }
+
+    // Caso 4: Mensual ('monthly') - reservado para la siguiente etapa
     return {
-      success: true,
-      notificationId,
+      success: false,
+      error: 'UNSUPPORTED_REPEAT_TYPE',
+      errorMessage: 'Esta frecuencia no está configurada para notificaciones en esta versión.',
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -258,7 +353,41 @@ export async function scheduleReminderNotification(
 }
 
 /**
- * Cancela la notificación asociada a un recordatorio si existe un ID válido.
+ * Cancela todas las notificaciones asociadas a un recordatorio,
+ * aceptando el recordatorio completo, una lista de IDs o un ID individual.
+ */
+export async function cancelReminderNotifications(
+  target?: Reminder | { notificationIds?: string[]; notificationId?: string } | string[] | string
+): Promise<boolean> {
+  if (!target) {
+    return false;
+  }
+
+  let idsToCancel: string[] = [];
+  if (typeof target === 'string') {
+    idsToCancel = [target];
+  } else if (Array.isArray(target)) {
+    idsToCancel = target.filter(Boolean);
+  } else {
+    idsToCancel = getReminderNotificationIds(target as Reminder);
+  }
+
+  if (idsToCancel.length === 0) {
+    return false;
+  }
+
+  let anyCancelled = false;
+  for (const id of idsToCancel) {
+    const success = await cancelNotification(id);
+    if (success) {
+      anyCancelled = true;
+    }
+  }
+  return anyCancelled;
+}
+
+/**
+ * Cancela una notificación individual por ID (mantenido para compatibilidad).
  */
 export async function cancelReminderNotification(notificationId?: string): Promise<boolean> {
   if (!notificationId) {
@@ -270,7 +399,7 @@ export async function cancelReminderNotification(notificationId?: string): Promi
 /**
  * Sincroniza los recordatorios almacenados con las notificaciones actualmente
  * programadas en el sistema. Asegura que los recordatorios activos tengan
- * su notificación creada y los inactivos no tengan alertas pendientes.
+ * todas sus notificaciones creadas y los inactivos no tengan alertas pendientes.
  */
 export async function reconcileScheduledNotifications(reminders: Reminder[]): Promise<Reminder[]> {
   try {
@@ -280,36 +409,72 @@ export async function reconcileScheduledNotifications(reminders: Reminder[]): Pr
     const updatedReminders: Reminder[] = [];
 
     for (const reminder of reminders) {
-      const isSupportedType = reminder.repeatType === 'once' || reminder.repeatType === 'daily';
+      const isSupportedType =
+        reminder.repeatType === 'once' ||
+        reminder.repeatType === 'daily' ||
+        reminder.repeatType === 'weekly';
+
+      const currentIds = getReminderNotificationIds(reminder);
 
       if (reminder.isActive && isSupportedType) {
-        // Si ya está activo y su notificación sigue registrada en el sistema, conservarlo
-        if (reminder.notificationId && activeScheduledIds.has(reminder.notificationId)) {
-          updatedReminders.push(reminder);
-        } else {
-          // Si no está registrado en el sistema, reprogramarlo
+        let needsReschedule = false;
+
+        if (reminder.repeatType === 'once' || reminder.repeatType === 'daily') {
+          // Requiere exactamente 1 ID y que exista en el sistema
+          if (currentIds.length !== 1 || !activeScheduledIds.has(currentIds[0])) {
+            needsReschedule = true;
+          }
+        } else if (reminder.repeatType === 'weekly') {
+          // Requiere tantos IDs como días seleccionados y que todos existan en el sistema
+          const expectedDaysCount = reminder.days?.length ?? 0;
+          if (expectedDaysCount === 0) {
+            needsReschedule = false;
+          } else if (
+            currentIds.length !== expectedDaysCount ||
+            !currentIds.every((id) => activeScheduledIds.has(id))
+          ) {
+            needsReschedule = true;
+          }
+        }
+
+        if (needsReschedule) {
+          // Cancelar IDs desactualizados o incompletos antes de reprogramar
+          for (const id of currentIds) {
+            if (activeScheduledIds.has(id)) {
+              await cancelNotification(id);
+            }
+          }
+
           const res = await scheduleReminderNotification(reminder);
-          if (res.success && res.notificationId) {
+          if (res.success && res.notificationIds && res.notificationIds.length > 0) {
             updatedReminders.push({
               ...reminder,
               notificationId: res.notificationId,
+              notificationIds: res.notificationIds,
             });
           } else {
             updatedReminders.push({
               ...reminder,
               notificationId: undefined,
+              notificationIds: undefined,
             });
           }
+        } else {
+          // Todo está sincronizado
+          updatedReminders.push(reminder);
         }
       } else {
-        // Si está inactivo pero aún tiene notificación en el sistema, cancelarla
-        if (reminder.notificationId) {
-          if (activeScheduledIds.has(reminder.notificationId)) {
-            await cancelNotification(reminder.notificationId);
+        // Inactivo o no soportado: cancelar cualquier notificación residual
+        if (currentIds.length > 0) {
+          for (const id of currentIds) {
+            if (activeScheduledIds.has(id)) {
+              await cancelNotification(id);
+            }
           }
           updatedReminders.push({
             ...reminder,
             notificationId: undefined,
+            notificationIds: undefined,
           });
         } else {
           updatedReminders.push(reminder);

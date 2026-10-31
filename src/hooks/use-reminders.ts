@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
 import {
-  cancelReminderNotification,
+  cancelReminderNotifications,
   reconcileScheduledNotifications,
   scheduleReminderNotification,
 } from '@/services/notification-service';
@@ -61,15 +61,19 @@ export function useReminders() {
       };
 
       let notificationId: string | undefined;
+      let notificationIds: string[] | undefined;
 
       const isSupported =
         tempReminder.isActive &&
-        (tempReminder.repeatType === 'once' || tempReminder.repeatType === 'daily');
+        (tempReminder.repeatType === 'once' ||
+          tempReminder.repeatType === 'daily' ||
+          tempReminder.repeatType === 'weekly');
 
       if (isSupported) {
         const scheduleRes = await scheduleReminderNotification(tempReminder);
-        if (scheduleRes.success && scheduleRes.notificationId) {
+        if (scheduleRes.success && scheduleRes.notificationIds && scheduleRes.notificationIds.length > 0) {
           notificationId = scheduleRes.notificationId;
+          notificationIds = scheduleRes.notificationIds;
         } else if (scheduleRes.permissionDenied) {
           Alert.alert(
             'Recordatorio guardado sin notificación',
@@ -82,6 +86,7 @@ export function useReminders() {
       const newReminder: Reminder = {
         ...tempReminder,
         notificationId,
+        notificationIds,
       };
 
       setReminders((prev) => {
@@ -98,8 +103,8 @@ export function useReminders() {
       if (isLoading) return;
 
       const currentReminder = reminders.find((item) => item.id === id);
-      if (currentReminder?.notificationId) {
-        await cancelReminderNotification(currentReminder.notificationId);
+      if (currentReminder) {
+        await cancelReminderNotifications(currentReminder);
       }
 
       const mergedReminder: Reminder = {
@@ -108,18 +113,23 @@ export function useReminders() {
         id,
         createdAt: currentReminder?.createdAt ?? Date.now(),
         notificationId: undefined,
+        notificationIds: undefined,
       } as Reminder;
 
       let newNotificationId: string | undefined;
+      let newNotificationIds: string[] | undefined;
 
       const isSupported =
         mergedReminder.isActive &&
-        (mergedReminder.repeatType === 'once' || mergedReminder.repeatType === 'daily');
+        (mergedReminder.repeatType === 'once' ||
+          mergedReminder.repeatType === 'daily' ||
+          mergedReminder.repeatType === 'weekly');
 
       if (isSupported) {
         const scheduleRes = await scheduleReminderNotification(mergedReminder);
-        if (scheduleRes.success && scheduleRes.notificationId) {
+        if (scheduleRes.success && scheduleRes.notificationIds && scheduleRes.notificationIds.length > 0) {
           newNotificationId = scheduleRes.notificationId;
+          newNotificationIds = scheduleRes.notificationIds;
         } else if (scheduleRes.permissionDenied) {
           Alert.alert(
             'Cambios guardados sin notificación',
@@ -132,6 +142,7 @@ export function useReminders() {
       const finalUpdatedReminder: Reminder = {
         ...mergedReminder,
         notificationId: newNotificationId,
+        notificationIds: newNotificationIds,
       };
 
       setReminders((prev) => {
@@ -154,17 +165,19 @@ export function useReminders() {
 
       const nextActive = !currentReminder.isActive;
       let nextNotificationId: string | undefined;
+      let nextNotificationIds: string[] | undefined;
 
       if (!nextActive) {
-        // Al desactivar: cancelar notificación existente
-        if (currentReminder.notificationId) {
-          await cancelReminderNotification(currentReminder.notificationId);
-        }
+        // Al desactivar: cancelar todas las notificaciones existentes
+        await cancelReminderNotifications(currentReminder);
         nextNotificationId = undefined;
+        nextNotificationIds = undefined;
       } else {
-        // Al activar: programar notificación si es soportada
+        // Al activar: programar si es soportada
         const isSupported =
-          currentReminder.repeatType === 'once' || currentReminder.repeatType === 'daily';
+          currentReminder.repeatType === 'once' ||
+          currentReminder.repeatType === 'daily' ||
+          currentReminder.repeatType === 'weekly';
 
         if (isSupported) {
           const scheduleRes = await scheduleReminderNotification({
@@ -172,8 +185,9 @@ export function useReminders() {
             isActive: true,
           });
 
-          if (scheduleRes.success && scheduleRes.notificationId) {
+          if (scheduleRes.success && scheduleRes.notificationIds && scheduleRes.notificationIds.length > 0) {
             nextNotificationId = scheduleRes.notificationId;
+            nextNotificationIds = scheduleRes.notificationIds;
           } else if (scheduleRes.permissionDenied) {
             Alert.alert(
               'Permiso de notificaciones requerido',
@@ -187,7 +201,12 @@ export function useReminders() {
       setReminders((prev) => {
         const updated = prev.map((item) =>
           item.id === id
-            ? { ...item, isActive: nextActive, notificationId: nextNotificationId }
+            ? {
+                ...item,
+                isActive: nextActive,
+                notificationId: nextNotificationId,
+                notificationIds: nextNotificationIds,
+              }
             : item
         );
         saveStoredReminders(updated);
@@ -202,8 +221,8 @@ export function useReminders() {
       if (isLoading) return;
 
       const currentReminder = reminders.find((item) => item.id === id);
-      if (currentReminder?.notificationId) {
-        await cancelReminderNotification(currentReminder.notificationId);
+      if (currentReminder) {
+        await cancelReminderNotifications(currentReminder);
       }
 
       setReminders((prev) => {

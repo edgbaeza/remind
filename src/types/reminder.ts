@@ -14,5 +14,6 @@ export interface Reminder {
   isActive: boolean;
   category?: ReminderCategory;
   createdAt: number;
-  notificationId?: string; // Identificador de la notificación programada en expo-notifications
+  notificationId?: string; // Identificador único (para compatibilidad con versiones previas)
+  notificationIds?: string[]; // Identificadores de todas las notificaciones programadas (para semanal y unificado)
 }
