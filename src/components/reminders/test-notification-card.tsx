@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Pressable,
   StyleSheet,
   Text,
@@ -26,6 +27,28 @@ export function TestNotificationCard() {
     text: string;
   } | null>(null);
 
+  // Marca de tiempo absoluta para calcular el tiempo restante sin depender de ticks de segundo plano
+  const targetTimestampRef = useRef<number | null>(null);
+
+  // Sincroniza el tiempo restante con el reloj real (Date.now())
+  const syncRemainingTime = useCallback(() => {
+    if (!targetTimestampRef.current) {
+      return;
+    }
+    const remaining = Math.max(0, Math.ceil((targetTimestampRef.current - Date.now()) / 1000));
+    if (remaining <= 0) {
+      targetTimestampRef.current = null;
+      setScheduledId(null);
+      setSecondsRemaining(null);
+      setStatusMessage({
+        type: 'info',
+        text: 'El tiempo de espera expiró. La notificación debe haber aparecido en tu barra de estado.',
+      });
+    } else {
+      setSecondsRemaining(remaining);
+    }
+  }, []);
+
   // Inicialización de canales y escucha de notificaciones en primer plano
   useEffect(() => {
     setupNotificationChannel();
@@ -33,6 +56,7 @@ export function TestNotificationCard() {
     const subscription = addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data;
       if (data && data.type === 'test_notification') {
+        targetTimestampRef.current = null;
         setStatusMessage({
           type: 'success',
           text: '¡Notificación recibida exitosamente en la aplicación!',
@@ -47,31 +71,33 @@ export function TestNotificationCard() {
     };
   }, []);
 
-  // Manejo del contador regresivo cuando hay una notificación programada
+  // Detecta cuando la aplicación regresa a primer plano (desbloqueo de pantalla / cambio de app)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        syncRemainingTime();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [syncRemainingTime]);
+
+  // Actualización periódica en primer plano basada en el reloj absoluto
   useEffect(() => {
     if (!scheduledId) {
       return;
     }
 
     const interval = setInterval(() => {
-      setSecondsRemaining((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(interval);
-          setScheduledId(null);
-          setStatusMessage({
-            type: 'info',
-            text: 'El tiempo de espera expiró. La notificación debe haber aparecido en tu barra de estado.',
-          });
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      syncRemainingTime();
+    }, 500);
 
     return () => {
       clearInterval(interval);
     };
-  }, [scheduledId]);
+  }, [scheduledId, syncRemainingTime]);
 
   const handleSchedule = async () => {
     if (isScheduling || scheduledId) {
@@ -85,6 +111,7 @@ export function TestNotificationCard() {
     setIsScheduling(false);
 
     if (result.success && result.notificationId) {
+      targetTimestampRef.current = Date.now() + 60 * 1000;
       setScheduledId(result.notificationId);
       setSecondsRemaining(60);
       setStatusMessage({
@@ -92,6 +119,7 @@ export function TestNotificationCard() {
         text: 'Notificación programada para dentro de 60 segundos.',
       });
     } else if (result.error === 'PERMISSION_DENIED') {
+      targetTimestampRef.current = null;
       const errorMsg =
         result.errorMessage ||
         'Permiso de notificaciones denegado. Para probarlas, habilita las notificaciones en Ajustes de Android.';
@@ -105,6 +133,7 @@ export function TestNotificationCard() {
         [{ text: 'Entendido' }]
       );
     } else {
+      targetTimestampRef.current = null;
       setStatusMessage({
         type: 'error',
         text: `Error al programar: ${result.errorMessage || 'Error desconocido'}`,
@@ -116,6 +145,7 @@ export function TestNotificationCard() {
     if (!scheduledId) return;
 
     const idToCancel = scheduledId;
+    targetTimestampRef.current = null;
     setScheduledId(null);
     setSecondsRemaining(null);
 
