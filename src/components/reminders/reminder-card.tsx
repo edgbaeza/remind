@@ -8,7 +8,6 @@ import {
   useColorScheme,
 } from 'react-native';
 
-import { Spacing } from '@/constants/theme';
 import { Reminder, ReminderCategory } from '@/types/reminder';
 
 interface ReminderCardProps {
@@ -74,8 +73,8 @@ export function ReminderCard({ reminder, onToggle, onDelete }: ReminderCardProps
         isDark ? styles.cardDark : styles.cardLight,
         !reminder.isActive && styles.cardInactive,
       ]}>
-      {/* Encabezado: Categoría y Acción de borrar */}
-      <View style={styles.headerRow}>
+      {/* Fila 1: Categoría a la izquierda, Estado + Switch + Eliminar a la derecha */}
+      <View style={styles.topRow}>
         <View
           style={[
             styles.categoryBadge,
@@ -91,17 +90,32 @@ export function ReminderCard({ reminder, onToggle, onDelete }: ReminderCardProps
           </Text>
         </View>
 
-        <Pressable
-          accessibilityLabel="Eliminar recordatorio"
-          hitSlop={8}
-          onPress={() => onDelete(reminder.id)}
-          style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}>
-          <Text style={[styles.deleteIconText, isDark && styles.deleteIconTextDark]}>✕</Text>
-        </Pressable>
+        <View style={styles.actionsGroup}>
+          <Text style={[styles.statusText, isDark ? styles.statusTextDark : styles.statusTextLight]}>
+            {reminder.isActive ? 'Activo' : 'Pausado'}
+          </Text>
+          <Switch
+            accessibilityLabel={`Estado del recordatorio ${reminder.title}`}
+            style={styles.switchControl}
+            thumbColor={reminder.isActive ? '#2563EB' : isDark ? '#4B5563' : '#D1D5DB'}
+            trackColor={{ false: isDark ? '#374151' : '#E5E7EB', true: '#93C5FD' }}
+            value={reminder.isActive}
+            onValueChange={() => onToggle(reminder.id)}
+          />
+          <Pressable
+            accessibilityLabel="Eliminar recordatorio"
+            hitSlop={10}
+            onPress={() => onDelete(reminder.id)}
+            style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}>
+            <Text style={[styles.deleteBtnText, isDark && styles.deleteBtnTextDark]}>✕</Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* Título del recordatorio */}
+      {/* Fila 2: Título del recordatorio */}
       <Text
+        numberOfLines={2}
+        ellipsizeMode="tail"
         style={[
           styles.title,
           isDark ? styles.titleDark : styles.titleLight,
@@ -110,35 +124,25 @@ export function ReminderCard({ reminder, onToggle, onDelete }: ReminderCardProps
         {reminder.title}
       </Text>
 
-      {/* Detalles: Hora y Frecuencia */}
-      <View style={styles.detailsRow}>
-        <View style={[styles.detailPill, isDark ? styles.detailPillDark : styles.detailPillLight]}>
-          <Text style={styles.detailIcon}>⏰</Text>
-          <Text style={[styles.detailText, isDark ? styles.detailTextDark : styles.detailTextLight]}>
+      {/* Fila 3: Horario y Frecuencia */}
+      <View style={styles.metaRow}>
+        <View style={[styles.metaPill, isDark ? styles.metaPillDark : styles.metaPillLight]}>
+          <Text style={styles.metaIcon}>⏰</Text>
+          <Text
+            numberOfLines={1}
+            style={[styles.metaText, isDark ? styles.metaTextDark : styles.metaTextLight]}>
             {reminder.time}
           </Text>
         </View>
 
-        <View style={[styles.detailPill, isDark ? styles.detailPillDark : styles.detailPillLight]}>
-          <Text style={styles.detailIcon}>🔄</Text>
-          <Text style={[styles.detailText, isDark ? styles.detailTextDark : styles.detailTextLight]}>
+        <View style={[styles.metaPill, isDark ? styles.metaPillDark : styles.metaPillLight]}>
+          <Text style={styles.metaIcon}>🔄</Text>
+          <Text
+            numberOfLines={1}
+            style={[styles.metaText, isDark ? styles.metaTextDark : styles.metaTextLight]}>
             {reminder.frequency}
           </Text>
         </View>
-      </View>
-
-      {/* Barra inferior: Estado y Switch */}
-      <View style={styles.footerRow}>
-        <Text style={[styles.statusLabel, isDark ? styles.statusLabelDark : styles.statusLabelLight]}>
-          {reminder.isActive ? 'Activo' : 'En pausa'}
-        </Text>
-        <Switch
-          accessibilityLabel={`Estado del recordatorio ${reminder.title}`}
-          thumbColor={reminder.isActive ? '#2563EB' : isDark ? '#6B7280' : '#D1D5DB'}
-          trackColor={{ false: isDark ? '#374151' : '#E5E7EB', true: '#93C5FD' }}
-          value={reminder.isActive}
-          onValueChange={() => onToggle(reminder.id)}
-        />
       </View>
     </View>
   );
@@ -146,70 +150,94 @@ export function ReminderCard({ reminder, onToggle, onDelete }: ReminderCardProps
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 20,
-    padding: Spacing.four,
-    marginBottom: Spacing.three,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 10,
+    shadowRadius: 6,
     elevation: 2,
     borderWidth: 1,
   },
   cardLight: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#F0F1F5',
+    borderColor: '#ECEEF2',
   },
   cardDark: {
-    backgroundColor: '#1E2126',
-    borderColor: '#2A2E36',
+    backgroundColor: '#1C1F26',
+    borderColor: '#2B303C',
   },
   cardInactive: {
-    opacity: 0.7,
+    opacity: 0.65,
   },
-  headerRow: {
+  topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.two,
+    marginBottom: 6,
   },
   categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
     gap: 4,
   },
   categoryIcon: {
-    fontSize: 12,
+    fontSize: 11,
   },
   categoryText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
   },
-  deleteButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  actionsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginRight: 2,
+  },
+  statusTextLight: {
+    color: '#6B7280',
+  },
+  statusTextDark: {
+    color: '#9CA3AF',
+  },
+  switchControl: {
+    transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
+    marginVertical: -6,
+  },
+  deleteBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 2,
   },
-  deleteButtonPressed: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  deleteBtnPressed: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
   },
-  deleteIconText: {
-    fontSize: 14,
+  deleteBtnText: {
+    fontSize: 13,
     color: '#9CA3AF',
-    fontWeight: 'bold',
+    fontWeight: '700',
+    lineHeight: 15,
   },
-  deleteIconTextDark: {
+  deleteBtnTextDark: {
     color: '#6B7280',
   },
   title: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    marginBottom: Spacing.three,
+    lineHeight: 22,
+    marginBottom: 8,
   },
   titleLight: {
     color: '#111827',
@@ -221,56 +249,37 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: '#9CA3AF',
   },
-  detailsRow: {
+  metaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  detailPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
     gap: 6,
   },
-  detailPillLight: {
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+    maxWidth: '100%',
+  },
+  metaPillLight: {
     backgroundColor: '#F3F4F6',
   },
-  detailPillDark: {
-    backgroundColor: '#272B32',
+  metaPillDark: {
+    backgroundColor: '#262A34',
   },
-  detailIcon: {
-    fontSize: 13,
+  metaIcon: {
+    fontSize: 11,
   },
-  detailText: {
-    fontSize: 13,
+  metaText: {
+    fontSize: 12,
     fontWeight: '500',
   },
-  detailTextLight: {
+  metaTextLight: {
     color: '#4B5563',
   },
-  detailTextDark: {
+  metaTextDark: {
     color: '#D1D5DB',
   },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(156, 163, 175, 0.15)',
-    paddingTop: Spacing.two,
-  },
-  statusLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  statusLabelLight: {
-    color: '#6B7280',
-  },
-  statusLabelDark: {
-    color: '#9CA3AF',
-  },
 });
-

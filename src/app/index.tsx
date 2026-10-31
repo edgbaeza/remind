@@ -8,15 +8,17 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CreateReminderModal } from '@/components/reminders/create-reminder-modal';
 import { ReminderCard } from '@/components/reminders/reminder-card';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useReminders } from '@/hooks/use-reminders';
 
 export default function RemindersScreen() {
   const isDark = useColorScheme() === 'dark';
+  const insets = useSafeAreaInsets();
+
   const {
     reminders,
     isLoading,
@@ -28,6 +30,7 @@ export default function RemindersScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   const activeCount = reminders.filter((r) => r.isActive).length;
+  const bottomInset = Math.max(insets.bottom, 16);
 
   return (
     <SafeAreaView
@@ -36,11 +39,13 @@ export default function RemindersScreen() {
       <View style={styles.contentWrapper}>
         {/* Cabecera principal */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.titleColumn}>
             <Text style={[styles.headerSubtitle, isDark ? styles.subtitleDark : styles.subtitleLight]}>
               Organiza tu día
             </Text>
-            <Text style={[styles.headerTitle, isDark ? styles.titleDark : styles.titleLight]}>
+            <Text
+              numberOfLines={1}
+              style={[styles.headerTitle, isDark ? styles.titleDark : styles.titleLight]}>
               Mis recordatorios
             </Text>
           </View>
@@ -53,7 +58,7 @@ export default function RemindersScreen() {
           </View>
         </View>
 
-        {/* Lista de recordatorios */}
+        {/* Lista de recordatorios con espacio inferior suficiente para el botón flotante */}
         <FlatList
           data={reminders}
           keyExtractor={(item) => item.id}
@@ -66,7 +71,7 @@ export default function RemindersScreen() {
           )}
           contentContainerStyle={[
             styles.listContainer,
-            { paddingBottom: BottomTabInset + 90 },
+            { paddingBottom: bottomInset + 80 },
           ]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
@@ -84,15 +89,15 @@ export default function RemindersScreen() {
                   No tienes recordatorios
                 </Text>
                 <Text style={[styles.emptySubtitle, isDark ? styles.subtitleDark : styles.subtitleLight]}>
-                  Pulsa el botón &quot;+ Nuevo recordatorio&quot; para crear el primero.
+                  Pulsa &quot;+ Nuevo recordatorio&quot; para crear el primero.
                 </Text>
               </View>
             )
           }
         />
 
-        {/* Botón Flotante para crear nuevo recordatorio */}
-        <View style={[styles.fabContainer, { bottom: BottomTabInset + 18 }]}>
+        {/* Botón Flotante para crear nuevo recordatorio - colocado en área segura */}
+        <View style={[styles.fabContainer, { bottom: bottomInset + 8 }]}>
           <Pressable
             accessibilityLabel="Crear nuevo recordatorio"
             onPress={() => setIsModalVisible(true)}
@@ -121,32 +126,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7F8FA',
   },
   safeAreaDark: {
-    backgroundColor: '#121417',
+    backgroundColor: '#111317',
   },
   contentWrapper: {
     flex: 1,
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: 16,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.three,
-    marginBottom: Spacing.two,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.two,
+    marginBottom: 6,
+  },
+  titleColumn: {
+    flex: 1,
+    marginRight: 12,
   },
   headerSubtitle: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
     marginBottom: 2,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
   },
@@ -163,10 +172,11 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
   },
   counterBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
     marginBottom: 4,
+    alignSelf: 'flex-end',
   },
   counterBadgeLight: {
     backgroundColor: '#EEF2FF',
@@ -185,7 +195,7 @@ const styles = StyleSheet.create({
     color: '#818CF8',
   },
   listContainer: {
-    paddingTop: Spacing.two,
+    paddingTop: 6,
   },
   loadingContainer: {
     paddingVertical: 60,
@@ -199,38 +209,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+    fontSize: 44,
+    marginBottom: 12,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   emptySubtitle: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
-    maxWidth: 280,
+    maxWidth: 260,
   },
   fabContainer: {
     position: 'absolute',
-    right: Spacing.four,
+    right: 16,
     alignItems: 'center',
   },
   fabButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#2563EB',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 30,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 24,
     shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
-    shadowRadius: 10,
+    shadowRadius: 8,
     elevation: 6,
-    gap: 8,
+    gap: 6,
   },
   fabButtonPressed: {
     opacity: 0.9,
@@ -238,13 +248,13 @@ const styles = StyleSheet.create({
   },
   fabIcon: {
     color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-    lineHeight: 20,
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 18,
   },
   fabText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
 });

@@ -11,6 +11,7 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Spacing } from '@/constants/theme';
 import { Reminder, ReminderCategory } from '@/types/reminder';
@@ -40,6 +41,7 @@ const CATEGORIES: { key: ReminderCategory; label: string; icon: string }[] = [
 
 export function CreateReminderModal({ visible, onClose, onSave }: CreateReminderModalProps) {
   const isDark = useColorScheme() === 'dark';
+  const insets = useSafeAreaInsets();
 
   const [title, setTitle] = useState('');
   const [time, setTime] = useState('08:00 AM');
@@ -88,7 +90,12 @@ export function CreateReminderModal({ visible, onClose, onSave }: CreateReminder
         style={styles.backdrop}>
         <Pressable style={styles.backdropTouch} onPress={handleClose} />
 
-        <View style={[styles.container, isDark ? styles.containerDark : styles.containerLight]}>
+        <View
+          style={[
+            styles.container,
+            isDark ? styles.containerDark : styles.containerLight,
+            { paddingBottom: Math.max(insets.bottom, 16) + 8 },
+          ]}>
           {/* Indicador superior de arrastre */}
           <View style={styles.dragHandle} />
 
