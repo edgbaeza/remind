@@ -25,6 +25,7 @@ import {
 export function TestNotificationCard() {
   const isDark = useColorScheme() === 'dark';
 
+  const [isExpanded, setIsExpanded] = useState(false);
   const [scheduledId, setScheduledId] = useState<string | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
@@ -221,117 +222,139 @@ export function TestNotificationCard() {
     );
   };
 
+  const showContent = isExpanded || !!scheduledId;
+
   return (
     <View style={[styles.container, isDark ? styles.containerDark : styles.containerLight]}>
-      {/* Cabecera de la tarjeta de prueba */}
-      <View style={styles.headerRow}>
+      {/* Cabecera interactiva para expandir / plegar diagnósticos */}
+      <Pressable
+        accessibilityLabel={showContent ? 'Ocultar diagnósticos Beta' : 'Mostrar diagnósticos Beta'}
+        accessibilityRole="button"
+        onPress={() => setIsExpanded((prev) => !prev)}
+        style={({ pressed }) => [styles.headerRow, pressed && styles.headerPressed]}>
         <View style={styles.titleWithIcon}>
-          <Text style={styles.icon}>🔔</Text>
+          <Text style={styles.icon}>🛠️</Text>
           <Text style={[styles.title, isDark ? styles.titleDark : styles.titleLight]}>
-            Prueba de notificación local
+            Diagnósticos de notificaciones
+          </Text>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>Beta 0.1</Text>
+          </View>
+        </View>
+
+        <View style={styles.toggleRow}>
+          {scheduledId && (
+            <View style={styles.activePill}>
+              <Text style={styles.activePillText}>⏱️ {secondsRemaining}s</Text>
+            </View>
+          )}
+          <Text style={[styles.toggleText, isDark ? styles.toggleTextDark : styles.toggleTextLight]}>
+            {showContent ? 'Ocultar ▲' : 'Expandir ▼'}
           </Text>
         </View>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>60 seg</Text>
-        </View>
-      </View>
+      </Pressable>
 
-      <Text style={[styles.description, isDark ? styles.descDark : styles.descLight]}>
-        Comprueba la recepción de alertas en primer plano o sal al escritorio de Android para recibirla en segundo plano.
-      </Text>
+      {/* Área expandible con controles de prueba e inspección */}
+      {showContent && (
+        <View style={styles.contentArea}>
+          <Text style={[styles.description, isDark ? styles.descDark : styles.descLight]}>
+            Herramientas para comprobar la recepción de alertas en primer plano, segundo plano y pantalla bloqueada.
+          </Text>
 
-      {/* Estado cuando está programada */}
-      {scheduledId ? (
-        <View style={[styles.scheduledBox, isDark ? styles.scheduledBoxDark : styles.scheduledBoxLight]}>
-          <View style={styles.scheduledInfo}>
-            <Text style={styles.scheduledTimer}>
-              ⏱️ Disparo en: <Text style={styles.timerHighlight}>{secondsRemaining}s</Text>
-            </Text>
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="middle"
-              style={[styles.scheduledIdText, isDark ? styles.idTextDark : styles.idTextLight]}>
-              ID: {scheduledId}
-            </Text>
+          {/* Estado cuando está programada */}
+          {scheduledId ? (
+            <View style={[styles.scheduledBox, isDark ? styles.scheduledBoxDark : styles.scheduledBoxLight]}>
+              <View style={styles.scheduledInfo}>
+                <Text style={styles.scheduledTimer}>
+                  ⏱️ Disparo en: <Text style={styles.timerHighlight}>{secondsRemaining}s</Text>
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  ellipsizeMode="middle"
+                  style={[styles.scheduledIdText, isDark ? styles.idTextDark : styles.idTextLight]}>
+                  ID: {scheduledId}
+                </Text>
+              </View>
+
+              <Pressable
+                accessibilityLabel="Cancelar notificación de prueba"
+                onPress={handleCancel}
+                style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}>
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </Pressable>
+            </View>
+          ) : (
+            /* Botón para programar */
+            <Pressable
+              accessibilityLabel="Probar notificación"
+              disabled={isScheduling}
+              onPress={handleSchedule}
+              style={({ pressed }) => [
+                styles.actionButton,
+                isScheduling && styles.actionButtonDisabled,
+                pressed && !isScheduling && styles.actionButtonPressed,
+              ]}>
+              {isScheduling ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.actionButtonIcon}>🚀</Text>
+                  <Text style={styles.actionButtonText}>Probar notificación (60s)</Text>
+                </>
+              )}
+            </Pressable>
+          )}
+
+          {/* Botones de inspección de notificaciones programadas */}
+          <View style={styles.toolsRow}>
+            <Pressable
+              accessibilityLabel="Ver notificaciones programadas en el sistema"
+              onPress={handleInspectScheduled}
+              style={({ pressed }) => [
+                styles.inspectButton,
+                isDark ? styles.inspectButtonDark : styles.inspectButtonLight,
+                pressed && styles.inspectButtonPressed,
+              ]}>
+              <Text style={[styles.inspectButtonText, isDark ? styles.inspectTextDark : styles.inspectTextLight]}>
+                🔍 Ver en el sistema
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityLabel="Previsualizar próximas 6 fechas calculadas para recordatorios mensuales"
+              onPress={handlePreviewMonthlyDates}
+              style={({ pressed }) => [
+                styles.inspectButton,
+                isDark ? styles.inspectButtonDark : styles.inspectButtonLight,
+                pressed && styles.inspectButtonPressed,
+              ]}>
+              <Text style={[styles.inspectButtonText, isDark ? styles.inspectTextDark : styles.inspectTextLight]}>
+                📅 Fechas mensuales
+              </Text>
+            </Pressable>
           </View>
 
-          <Pressable
-            accessibilityLabel="Cancelar notificación de prueba"
-            onPress={handleCancel}
-            style={({ pressed }) => [styles.cancelBtn, pressed && styles.cancelBtnPressed]}>
-            <Text style={styles.cancelBtnText}>Cancelar</Text>
-          </Pressable>
-        </View>
-      ) : (
-        /* Botón para programar */
-        <Pressable
-          accessibilityLabel="Probar notificación"
-          disabled={isScheduling}
-          onPress={handleSchedule}
-          style={({ pressed }) => [
-            styles.actionButton,
-            isScheduling && styles.actionButtonDisabled,
-            pressed && !isScheduling && styles.actionButtonPressed,
-          ]}>
-          {isScheduling ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <>
-              <Text style={styles.actionButtonIcon}>🚀</Text>
-              <Text style={styles.actionButtonText}>Probar notificación (60s)</Text>
-            </>
+          {/* Mensaje de retroalimentación */}
+          {statusMessage && (
+            <View
+              style={[
+                styles.statusMessageCard,
+                statusMessage.type === 'success' && (isDark ? styles.msgSuccessDark : styles.msgSuccessLight),
+                statusMessage.type === 'error' && (isDark ? styles.msgErrorDark : styles.msgErrorLight),
+                statusMessage.type === 'info' && (isDark ? styles.msgInfoDark : styles.msgInfoLight),
+              ]}>
+              <Text
+                style={[
+                  styles.statusMessageText,
+                  statusMessage.type === 'success' && (isDark ? styles.msgTextSuccessDark : styles.msgTextSuccessLight),
+                  statusMessage.type === 'error' && (isDark ? styles.msgTextErrorDark : styles.msgTextErrorLight),
+                  statusMessage.type === 'info' && (isDark ? styles.msgTextInfoDark : styles.msgTextInfoLight),
+                ]}>
+                {statusMessage.type === 'success' ? '✅ ' : statusMessage.type === 'error' ? '⚠️ ' : 'ℹ️ '}
+                {statusMessage.text}
+              </Text>
+            </View>
           )}
-        </Pressable>
-      )}
-
-      {/* Botón de inspección de notificaciones programadas */}
-      <View style={styles.toolsRow}>
-        <Pressable
-          accessibilityLabel="Ver notificaciones programadas en el sistema"
-          onPress={handleInspectScheduled}
-          style={({ pressed }) => [
-            styles.inspectButton,
-            isDark ? styles.inspectButtonDark : styles.inspectButtonLight,
-            pressed && styles.inspectButtonPressed,
-          ]}>
-          <Text style={[styles.inspectButtonText, isDark ? styles.inspectTextDark : styles.inspectTextLight]}>
-            🔍 Consultar en el sistema
-          </Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityLabel="Previsualizar próximas 6 fechas calculadas para recordatorios mensuales"
-          onPress={handlePreviewMonthlyDates}
-          style={({ pressed }) => [
-            styles.inspectButton,
-            isDark ? styles.inspectButtonDark : styles.inspectButtonLight,
-            pressed && styles.inspectButtonPressed,
-          ]}>
-          <Text style={[styles.inspectButtonText, isDark ? styles.inspectTextDark : styles.inspectTextLight]}>
-            📅 Fechas mensuales (28-31)
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Mensaje de retroalimentación */}
-      {statusMessage && (
-        <View
-          style={[
-            styles.statusMessageCard,
-            statusMessage.type === 'success' && (isDark ? styles.msgSuccessDark : styles.msgSuccessLight),
-            statusMessage.type === 'error' && (isDark ? styles.msgErrorDark : styles.msgErrorLight),
-            statusMessage.type === 'info' && (isDark ? styles.msgInfoDark : styles.msgInfoLight),
-          ]}>
-          <Text
-            style={[
-              styles.statusMessageText,
-              statusMessage.type === 'success' && (isDark ? styles.msgTextSuccessDark : styles.msgTextSuccessLight),
-              statusMessage.type === 'error' && (isDark ? styles.msgTextErrorDark : styles.msgTextErrorLight),
-              statusMessage.type === 'info' && (isDark ? styles.msgTextInfoDark : styles.msgTextInfoLight),
-            ]}>
-            {statusMessage.type === 'success' ? '✅ ' : statusMessage.type === 'error' ? '⚠️ ' : 'ℹ️ '}
-            {statusMessage.text}
-          </Text>
         </View>
       )}
     </View>
@@ -357,7 +380,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+  },
+  headerPressed: {
+    opacity: 0.7,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  toggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  toggleTextLight: {
+    color: '#2563EB',
+  },
+  toggleTextDark: {
+    color: '#60A5FA',
+  },
+  activePill: {
+    backgroundColor: '#10B98120',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#10B98140',
+  },
+  activePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  contentArea: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#33415540',
   },
   titleWithIcon: {
     flexDirection: 'row',
