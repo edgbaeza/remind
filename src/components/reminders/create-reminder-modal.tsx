@@ -1,7 +1,3 @@
-import DateTimePicker, {
-  DateTimePickerAndroid,
-  DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
 import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -24,9 +20,11 @@ import {
   formatDateSpanish,
   formatDaysSummary,
   getEffectiveMonthlyDay,
+  getLocalDateString,
   isDateTimeInPast,
   WEEK_DAYS,
 } from '@/utils/reminder-dates';
+import { CalendarDatePicker, CalendarPickerMode } from './calendar-date-picker';
 import { WheelTimePicker } from './wheel-time-picker';
 
 interface CreateReminderModalProps {
@@ -62,6 +60,11 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
   const insets = useSafeAreaInsets();
   const isEditing = Boolean(reminderToEdit);
 
+  // Fecha actual en hora local del dispositivo (sin sesgo UTC)
+  const today = new Date();
+  const todayLocalStr = getLocalDateString(today);
+  const todayDayNumber = today.getDate();
+
   // Campos principales
   const [title, setTitle] = useState(reminderToEdit?.title ?? '');
   const [time, setTime] = useState(reminderToEdit?.time ?? '08:00 AM');
@@ -85,73 +88,40 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
     reminderToEdit?.days ?? ['L', 'M', 'X', 'J', 'V']
   );
 
-  // Día del mes para repetición mensual (1 - 31)
+  // Día del mes para repetición mensual (inicializado dinámicamente con el día de hoy, nunca fijo)
   const [dayOfMonth, setDayOfMonth] = useState<number>(
-    reminderToEdit?.dayOfMonth ?? 15
+    reminderToEdit?.dayOfMonth ?? todayDayNumber
   );
 
-  // Fecha para "Una sola vez" (YYYY-MM-DD)
-  const todayFormatted = new Date().toISOString().split('T')[0];
+  // Fecha completa para "Una sola vez" (inicializada dinámicamente con la fecha local de hoy)
   const [targetDate, setTargetDate] = useState<string>(
-    reminderToEdit?.targetDate ?? todayFormatted
+    reminderToEdit?.targetDate ?? todayLocalStr
   );
 
   // Errores de validación
   const [titleError, setTitleError] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Estado para el selector de hora WheelTimePicker estilo Samsung One UI
+  // Estados para selectores oscuros personalizados
   const [showWheelPicker, setShowWheelPicker] = useState(false);
-  const [showIosDatePicker, setShowIosDatePicker] = useState(false);
+  const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
+  const [calendarPickerMode, setCalendarPickerMode] = useState<CalendarPickerMode>('date');
 
   // Abrir WheelTimePicker personalizado
   const handleOpenTimePicker = () => {
     setShowWheelPicker(true);
   };
 
-  // Selector de Calendario para "Una sola vez"
+  // Abrir CalendarDatePicker en modo fecha completa para "Una sola vez"
   const handleOpenCalendarOnce = () => {
-    const [y, m, d] = targetDate.split('-').map(Number);
-    const currentDate = new Date(y, m - 1, d);
-
-    if (Platform.OS === 'android') {
-      DateTimePickerAndroid.open({
-        value: currentDate,
-        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
-          if (event.type === 'set' && selectedDate) {
-            const formatted = selectedDate.toISOString().split('T')[0];
-            setTargetDate(formatted);
-            if (validationError) setValidationError(null);
-          }
-        },
-        mode: 'date',
-        display: 'calendar',
-      });
-    } else {
-      setShowIosDatePicker(true);
-    }
+    setCalendarPickerMode('date');
+    setCalendarPickerVisible(true);
   };
 
-  // Selector de Calendario para "Mensualmente" (elige día del mes 1..31)
+  // Abrir CalendarDatePicker en modo día del mes para "Mensualmente"
   const handleOpenCalendarMonthly = () => {
-    const today = new Date();
-    const currentDate = new Date(today.getFullYear(), today.getMonth(), Math.min(dayOfMonth, 28));
-
-    if (Platform.OS === 'android') {
-      DateTimePickerAndroid.open({
-        value: currentDate,
-        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
-          if (event.type === 'set' && selectedDate) {
-            setDayOfMonth(selectedDate.getDate());
-            if (validationError) setValidationError(null);
-          }
-        },
-        mode: 'date',
-        display: 'calendar',
-      });
-    } else {
-      setShowIosDatePicker(true);
-    }
+    setCalendarPickerMode('dayOfMonth');
+    setCalendarPickerVisible(true);
   };
 
   const handleToggleDay = (dayKey: string) => {
@@ -287,7 +257,7 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
             )}
           </View>
 
-          {/* Sección: Hora del Recordatorio */}
+          {/* Sección: Hora del Recordatorio (Abre WheelTimePicker) */}
           <View style={styles.fieldGroup}>
             <Text style={[styles.fieldLabel, isDark ? styles.labelDark : styles.labelLight]}>
               Hora
@@ -383,9 +353,9 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
               })}
             </View>
 
-            {/* Subpantalla según la repetición elegida */}
+            {/* Subpantallas de configuración de repetición */}
 
-            {/* Caso 1: Una sola vez -> Selector de Fecha */}
+            {/* Caso 1: Una sola vez -> Selector de Fecha oscuro */}
             {repeatType === 'once' && (
               <View style={[styles.subSectionBox, isDark ? styles.cardElementDark : styles.cardElementLight]}>
                 <View style={styles.subSectionHeader}>
@@ -415,7 +385,7 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
               </View>
             )}
 
-            {/* Caso 2: Todos los días -> Resumen directo sin círculos */}
+            {/* Caso 2: Todos los días -> Sin círculos, diseño despejado */}
             {repeatType === 'daily' && (
               <View style={[styles.subSectionBox, isDark ? styles.cardElementDark : styles.cardElementLight]}>
                 <View style={styles.dailyInfoRow}>
@@ -425,7 +395,7 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
                       Repetición diaria
                     </Text>
                     <Text style={[styles.dailySubtitle, isDark ? styles.helperDark : styles.helperLight]}>
-                      Sonarás todos los días de la semana a las {time}
+                      Sonará todos los días a las {time}
                     </Text>
                   </View>
                 </View>
@@ -480,7 +450,7 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
               </View>
             )}
 
-            {/* Caso 4: Mensualmente -> Selector de día 1..31 con calendario nativo */}
+            {/* Caso 4: Mensualmente -> Selector de día 1..31 con calendario oscuro */}
             {repeatType === 'monthly' && (
               <View style={[styles.subSectionBox, isDark ? styles.cardElementDark : styles.cardElementLight]}>
                 <View style={styles.subSectionHeader}>
@@ -511,32 +481,30 @@ function ReminderFormContent({ onClose, onSave, reminderToEdit }: FormContentPro
                     )}
                   </View>
                   <View style={styles.editDatePill}>
-                    <Text style={styles.editDatePillText}>Elegir en calendario</Text>
+                    <Text style={styles.editDatePillText}>Elegir día</Text>
                   </View>
                 </Pressable>
               </View>
             )}
 
-            {/* Fallback de selector de fecha iOS para Una sola vez / Mensual */}
-            {showIosDatePicker && Platform.OS !== 'android' && (
-              <View style={styles.iosPickerContainer}>
-                <DateTimePicker
-                  value={new Date()}
-                  mode="date"
-                  display="calendar"
-                  onChange={(_event, date) => {
-                    setShowIosDatePicker(false);
-                    if (date) {
-                      if (repeatType === 'once') {
-                        setTargetDate(date.toISOString().split('T')[0]);
-                      } else if (repeatType === 'monthly') {
-                        setDayOfMonth(date.getDate());
-                      }
-                    }
-                  }}
-                />
-              </View>
-            )}
+            {/* Selector de calendario oscuro personalizado CalendarDatePicker */}
+            <CalendarDatePicker
+              visible={calendarPickerVisible}
+              mode={calendarPickerMode}
+              initialDate={targetDate}
+              initialDayOfMonth={dayOfMonth}
+              onConfirmDate={(selected) => {
+                setTargetDate(selected);
+                setCalendarPickerVisible(false);
+                if (validationError) setValidationError(null);
+              }}
+              onConfirmDayOfMonth={(selectedDay) => {
+                setDayOfMonth(selectedDay);
+                setCalendarPickerVisible(false);
+                if (validationError) setValidationError(null);
+              }}
+              onCancel={() => setCalendarPickerVisible(false)}
+            />
           </View>
 
           {/* Campo: Categoría */}
@@ -615,6 +583,9 @@ export function CreateReminderModal({
 }: CreateReminderModalProps) {
   if (!visible) return null;
 
+  // Clave para diferenciar el modo creación del modo edición
+  const formKey = reminderToEdit ? `edit-${reminderToEdit.id}` : 'create-reminder';
+
   return (
     <Modal
       animationType="slide"
@@ -622,7 +593,7 @@ export function CreateReminderModal({
       visible={visible}
       onRequestClose={onClose}>
       <ReminderFormContent
-        key={reminderToEdit ? reminderToEdit.id : 'new-reminder'}
+        key={formKey}
         onClose={onClose}
         onSave={onSave}
         reminderToEdit={reminderToEdit}
@@ -811,11 +782,6 @@ const styles = StyleSheet.create({
   changeBadgeTextDark: {
     color: '#93C5FD',
   },
-  iosPickerContainer: {
-    marginTop: 10,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 12,
-  },
   repeatOptionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -944,7 +910,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayCircleSelected: {
-    backgroundColor: '#818CF8', // Tono lavanda/azul suave como la referencia de Samsung
+    backgroundColor: '#818CF8', // Tono lavanda/azul de Samsung
   },
   dayCircleUnselectedLight: {
     backgroundColor: 'transparent',

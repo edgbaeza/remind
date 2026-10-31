@@ -86,11 +86,34 @@ export function formatTimeString(date: Date): string {
 }
 
 /**
+ * Retorna la fecha local en formato "YYYY-MM-DD" sin sesgo por zona horaria UTC.
+ */
+export function getLocalDateString(dateInput: Date = new Date()): string {
+  const y = dateInput.getFullYear();
+  const m = dateInput.getMonth() + 1;
+  const d = dateInput.getDate();
+  const mStr = m < 10 ? `0${m}` : `${m}`;
+  const dStr = d < 10 ? `0${d}` : `${d}`;
+  return `${y}-${mStr}-${dStr}`;
+}
+
+/**
+ * Parsea un string YYYY-MM-DD a objeto Date local a medianoche.
+ */
+export function parseLocalDateString(dateStr: string): Date {
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+  }
+  return new Date();
+}
+
+/**
  * Formatea una fecha YYYY-MM-DD a formato amigable en español.
  * Ejemplo: "31 de oct. de 2026"
  */
 export function formatDateSpanish(dateInput: string | Date): string {
-  const d = typeof dateInput === 'string' ? new Date(`${dateInput}T00:00:00`) : dateInput;
+  const d = typeof dateInput === 'string' ? parseLocalDateString(dateInput) : dateInput;
   const meses = [
     'ene',
     'feb',
