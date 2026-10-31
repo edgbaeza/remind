@@ -12,6 +12,7 @@ import {
   addNotificationReceivedListener,
   cancelNotification,
   scheduleTestNotification,
+  setupNotificationChannel,
 } from '@/services/notification-service';
 
 export function TestNotificationCard() {
@@ -25,8 +26,10 @@ export function TestNotificationCard() {
     text: string;
   } | null>(null);
 
-  // Escucha cuando la notificación se recibe en primer plano
+  // Inicialización de canales y escucha de notificaciones en primer plano
   useEffect(() => {
+    setupNotificationChannel();
+
     const subscription = addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data;
       if (data && data.type === 'test_notification') {

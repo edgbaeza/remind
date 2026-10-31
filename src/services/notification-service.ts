@@ -22,20 +22,22 @@ Notifications.setNotificationHandler({
 
 /**
  * Crea y configura el canal de notificación para Android con importancia alta,
- * sonido y patrón de vibración.
+ * vibración y color de luz distintivo.
+ * No pasa 'sound' como parámetro para permitir que Android configure
+ * sus AudioAttributes por defecto y evitar NullPointerException en el runtime nativo.
  */
 export async function setupNotificationChannel(): Promise<void> {
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
-      name: ANDROID_CHANNEL_NAME,
-      importance: AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#2563EB',
-      sound: 'default',
-      enableVibrate: true,
-      enableLights: true,
-      showBadge: true,
-    });
+    try {
+      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+        name: ANDROID_CHANNEL_NAME,
+        importance: AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#2563EB',
+      });
+    } catch (channelError) {
+      console.warn('Advertencia al configurar el canal de notificaciones:', channelError);
+    }
   }
 }
 
@@ -96,6 +98,10 @@ export async function scheduleTestNotification(
   seconds: number = 60
 ): Promise<ScheduleTestResult> {
   try {
+    // 1. Asegurar el canal de notificación en Android antes de pedir permisos
+    await setupNotificationChannel();
+
+    // 2. Comprobar/solicitar permisos
     const perms = await requestNotificationPermissions();
     if (!perms.granted) {
       return {
@@ -106,13 +112,11 @@ export async function scheduleTestNotification(
       };
     }
 
-    await setupNotificationChannel();
-
+    // 3. Programar la notificación local
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Recordatorio de prueba',
         body: '¡Las notificaciones de Remind funcionan!',
-        sound: 'default',
         data: {
           type: 'test_notification',
           scheduledAt: Date.now(),
