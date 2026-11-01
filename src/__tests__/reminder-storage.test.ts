@@ -6,6 +6,7 @@ import {
   getStoredReminders,
   INITIAL_REMINDERS,
   INITIALIZED_KEY,
+  migrateReminder,
   saveStoredReminders,
   STORAGE_KEY,
   StorageReadError,
@@ -239,6 +240,50 @@ describe('Pruebas unitarias de Persistencia (AsyncStorage y AsyncQueue)', () => 
 
       assert.equal(res2, 'recuperado');
       assert.deepEqual(executionLog, ['intento-1-falla', 'intento-2-exito']);
+    });
+  });
+
+  describe('4. Migración transparente y normalización (migrateReminder)', () => {
+    it('Normaliza recordatorios semanales removiendo el prefijo legado "Cada "', () => {
+      const legacyWeekly: Reminder = {
+        id: 'legacy-1',
+        title: 'Regar jardín',
+        time: '06:00 PM',
+        frequency: 'Cada Mar, Jue',
+        repeatType: 'weekly',
+        days: ['M', 'J'],
+        isActive: true,
+        createdAt: 100,
+      };
+
+      const migrated = migrateReminder(legacyWeekly);
+      assert.equal(migrated.frequency, 'Mar, Jue', 'Debe eliminar el prefijo "Cada " en recordatorios semanales');
+    });
+
+    it('Conserva la frecuencia en recordatorios diarios y mensuales', () => {
+      const daily: Reminder = {
+        id: 'daily-1',
+        title: 'Tomar vitamina',
+        time: '08:00 AM',
+        frequency: 'Todos los días',
+        repeatType: 'daily',
+        isActive: true,
+        createdAt: 200,
+      };
+
+      const monthly: Reminder = {
+        id: 'monthly-1',
+        title: 'Pago servicio',
+        time: '10:00 AM',
+        frequency: 'Cada día 15 del mes',
+        repeatType: 'monthly',
+        dayOfMonth: 15,
+        isActive: true,
+        createdAt: 300,
+      };
+
+      assert.equal(migrateReminder(daily).frequency, 'Todos los días');
+      assert.equal(migrateReminder(monthly).frequency, 'Cada día 15 del mes');
     });
   });
 });

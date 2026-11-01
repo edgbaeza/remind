@@ -1,5 +1,3 @@
-export const ALL_DAYS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-
 export const WEEK_DAYS: { key: string; label: string; full: string; short: string }[] = [
   { key: 'D', label: 'D', full: 'Domingo', short: 'Dom' },
   { key: 'L', label: 'L', full: 'Lunes', short: 'Lun' },
@@ -10,15 +8,11 @@ export const WEEK_DAYS: { key: string; label: string; full: string; short: strin
   { key: 'S', label: 'S', full: 'Sábado', short: 'Sáb' },
 ];
 
-const DAY_NAMES_MAP: Record<string, string> = {
-  D: 'Dom',
-  L: 'Lun',
-  M: 'Mar',
-  X: 'Mié',
-  J: 'Jue',
-  V: 'Vie',
-  S: 'Sáb',
-};
+export const ALL_DAYS = WEEK_DAYS.map((w) => w.key);
+
+const DAY_NAMES_MAP: Record<string, string> = Object.fromEntries(
+  WEEK_DAYS.map((w) => [w.key, w.short])
+);
 
 /**
  * Conversión de claves de días ('D', 'L', 'M', 'X', 'J', 'V', 'S')
@@ -35,28 +29,18 @@ export const DAY_KEY_TO_EXPO_WEEKDAY: Record<string, number> = {
   S: 7, // Sábado
 };
 
-export const EXPO_WEEKDAY_TO_NAME: Record<number, string> = {
-  1: 'Domingo',
-  2: 'Lunes',
-  3: 'Martes',
-  4: 'Miércoles',
-  5: 'Jueves',
-  6: 'Viernes',
-  7: 'Sábado',
-};
-
 /**
- * Genera el resumen en español de los días seleccionados tal como en la referencia.
- * Ejemplo: "Cada Lun, Mar, Mié, Jue, Vie" o "Cada Mar, Jue" o "Todos los días".
+ * Genera el resumen en español de los días seleccionados.
+ * Ejemplo: "Lun, Mar, Mié, Jue, Vie", "Mar, Jue", "Todos los días".
  */
 export function formatDaysSummary(days: string[]): string {
   const ordered = ALL_DAYS.filter((d) => days.includes(d));
   if (ordered.length === 7) return 'Todos los días';
   if (ordered.length === 0) return 'Selecciona al menos un día';
-  if (ordered.join('') === 'LMXJV') return 'Cada Lun, Mar, Mié, Jue, Vie';
-  if (ordered.join('') === 'MJ') return 'Cada Mar, Jue';
+  if (ordered.join('') === 'LMXJV') return 'Lun, Mar, Mié, Jue, Vie';
+  if (ordered.join('') === 'MJ') return 'Mar, Jue';
   if (ordered.join('') === 'DS') return 'Fines de semana (Sáb, Dom)';
-  return `Cada ${ordered.map((d) => DAY_NAMES_MAP[d] ?? d).join(', ')}`;
+  return ordered.map((d) => DAY_NAMES_MAP[d] ?? d).join(', ');
 }
 
 /**
@@ -210,15 +194,12 @@ export function formatDateSpanish(dateInput: string | Date): string {
  * Verifica si una fecha específica con hora ya ha pasado en el tiempo actual.
  */
 export function isDateTimeInPast(dateString: string, timeString: string): boolean {
-  const [yearStr, monthStr, dayStr] = dateString.split('-');
-  if (!yearStr || !monthStr || !dayStr) return false;
+  const parts = dateString.split('-').map(Number);
+  if (parts.length !== 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) {
+    return false;
+  }
 
-  const targetDate = new Date(
-    parseInt(yearStr, 10),
-    parseInt(monthStr, 10) - 1,
-    parseInt(dayStr, 10)
-  );
-
+  const targetDate = parseLocalDateString(dateString);
   const parsedTime = parseTimeString(timeString);
   targetDate.setHours(parsedTime.getHours(), parsedTime.getMinutes(), 0, 0);
 

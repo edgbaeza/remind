@@ -3,7 +3,9 @@ import test, { describe } from 'node:test';
 
 import {
   calculateMonthlyOccurrences,
+  formatDaysSummary,
   getEffectiveMonthlyDay,
+  isDateTimeInPast,
 } from '../utils/reminder-dates.ts';
 
 describe('Pruebas automatizadas de recordatorios mensuales (Días 28, 29, 30 y 31)', () => {
@@ -145,6 +147,50 @@ describe('Pruebas automatizadas de recordatorios mensuales (Días 28, 29, 30 y 3
       // La primera ocurrencia debe ser la de febrero de 2027 (día 28), no la de hoy que ya pasó
       assert.equal(occurrences[0].getMonth(), 1, 'La primera ocurrencia futura debe ser febrero');
       assert.equal(occurrences[0].getDate(), 28);
+    });
+  });
+
+  describe('3. Resumen y formato de días semanales (formatDaysSummary)', () => {
+    test('LMXJV retorna "Lun, Mar, Mié, Jue, Vie" sin prefijo "Cada"', () => {
+      assert.equal(formatDaysSummary(['L', 'M', 'X', 'J', 'V']), 'Lun, Mar, Mié, Jue, Vie');
+    });
+
+    test('MJ retorna "Mar, Jue" sin prefijo "Cada"', () => {
+      assert.equal(formatDaysSummary(['M', 'J']), 'Mar, Jue');
+    });
+
+    test('DS retorna "Fines de semana (Sáb, Dom)"', () => {
+      assert.equal(formatDaysSummary(['D', 'S']), 'Fines de semana (Sáb, Dom)');
+    });
+
+    test('Todos los días retorna "Todos los días"', () => {
+      assert.equal(formatDaysSummary(['D', 'L', 'M', 'X', 'J', 'V', 'S']), 'Todos los días');
+    });
+
+    test('Sin días seleccionados retorna mensaje de selección', () => {
+      assert.equal(formatDaysSummary([]), 'Selecciona al menos un día');
+    });
+
+    test('Combinaciones personalizadas no inician con "Cada"', () => {
+      const summary = formatDaysSummary(['L', 'X', 'V']);
+      assert.equal(summary, 'Lun, Mié, Vie');
+      assert.ok(!summary.startsWith('Cada'), 'No debe iniciar con "Cada"');
+    });
+  });
+
+  describe('4. Validación de fecha y hora pasada (isDateTimeInPast)', () => {
+    test('Detecta correctamente una fecha pasada', () => {
+      assert.equal(isDateTimeInPast('2000-01-01', '08:00 AM'), true);
+    });
+
+    test('Detecta correctamente una fecha futura', () => {
+      assert.equal(isDateTimeInPast('2099-12-31', '11:59 PM'), false);
+    });
+
+    test('Retorna false de forma segura ante cadenas inválidas', () => {
+      assert.equal(isDateTimeInPast('', '08:00 AM'), false);
+      assert.equal(isDateTimeInPast('invalido', '08:00 AM'), false);
+      assert.equal(isDateTimeInPast('2025-01', '08:00 AM'), false);
     });
   });
 });

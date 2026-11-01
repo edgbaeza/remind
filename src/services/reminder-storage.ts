@@ -55,7 +55,7 @@ export const INITIAL_REMINDERS: Reminder[] = [
     id: '2',
     title: 'Regar las plantas',
     time: '06:00 PM',
-    frequency: 'Cada Mar, Jue',
+    frequency: 'Mar, Jue',
     repeatType: 'weekly',
     isActive: true,
     category: 'hogar',
@@ -80,55 +80,67 @@ export const INITIAL_REMINDERS: Reminder[] = [
  * hacia atrás con versiones anteriores de Remind.
  */
 export function migrateReminder(raw: Reminder): Reminder {
+  let migrated: Reminder;
+
   if (raw.repeatType) {
-    return raw;
-  }
-
-  const freq = (raw.frequency || '').toLowerCase();
-  let repeatType: RepeatType = 'daily';
-  let dayOfMonth: number | undefined;
-  let targetDate: string | undefined;
-  let days = raw.days;
-
-  if (freq.includes('mes') || freq.includes('15') || freq.includes('mensual')) {
-    repeatType = 'monthly';
-    const match = raw.frequency.match(/\d+/);
-    dayOfMonth = match ? parseInt(match[0], 10) : 15;
-  } else if (
-    days &&
-    days.length > 0 &&
-    days.length < 7
-  ) {
-    repeatType = 'weekly';
-  } else if (
-    freq.includes('martes') ||
-    freq.includes('jueves') ||
-    freq.includes('lunes') ||
-    freq.includes('semanal') ||
-    freq.includes('mar, jue')
-  ) {
-    repeatType = 'weekly';
-    if (!days || days.length === 0) {
-      if (freq.includes('martes') || freq.includes('jueves')) {
-        days = ['M', 'J'];
-      } else {
-        days = ['L', 'M', 'X', 'J', 'V'];
-      }
-    }
-  } else if (freq.includes('una sola vez') || freq.includes('única')) {
-    repeatType = 'once';
-    targetDate = new Date().toISOString().split('T')[0];
+    migrated = raw;
   } else {
-    repeatType = 'daily';
+    const freq = (raw.frequency || '').toLowerCase();
+    let repeatType: RepeatType = 'daily';
+    let dayOfMonth: number | undefined;
+    let targetDate: string | undefined;
+    let days = raw.days;
+
+    if (freq.includes('mes') || freq.includes('15') || freq.includes('mensual')) {
+      repeatType = 'monthly';
+      const match = raw.frequency.match(/\d+/);
+      dayOfMonth = match ? parseInt(match[0], 10) : 15;
+    } else if (
+      days &&
+      days.length > 0 &&
+      days.length < 7
+    ) {
+      repeatType = 'weekly';
+    } else if (
+      freq.includes('martes') ||
+      freq.includes('jueves') ||
+      freq.includes('lunes') ||
+      freq.includes('semanal') ||
+      freq.includes('mar, jue')
+    ) {
+      repeatType = 'weekly';
+      if (!days || days.length === 0) {
+        if (freq.includes('martes') || freq.includes('jueves')) {
+          days = ['M', 'J'];
+        } else {
+          days = ['L', 'M', 'X', 'J', 'V'];
+        }
+      }
+    } else if (freq.includes('una sola vez') || freq.includes('única')) {
+      repeatType = 'once';
+      targetDate = new Date().toISOString().split('T')[0];
+    } else {
+      repeatType = 'daily';
+    }
+
+    migrated = {
+      ...raw,
+      repeatType,
+      dayOfMonth,
+      targetDate,
+      days,
+    };
   }
 
-  return {
-    ...raw,
-    repeatType,
-    dayOfMonth,
-    targetDate,
-    days,
-  };
+  // Normalizar la etiqueta de frecuencia para recordatorios semanales (remover prefijo legado "Cada ")
+  if (migrated.repeatType === 'weekly' && migrated.frequency && /^Cada\s+/i.test(migrated.frequency)) {
+    migrated = {
+      ...migrated,
+      frequency: migrated.frequency.replace(/^Cada\s+/i, ''),
+    };
+  }
+
+  return migrated;
 }
 
 /**
