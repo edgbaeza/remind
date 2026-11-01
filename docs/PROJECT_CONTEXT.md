@@ -157,13 +157,15 @@ Ubicación: `src/services/reminder-storage.ts`
   - `@remind_app/reminders_v1`: Arreglo serializado en JSON con todos los recordatorios.
   - `@remind_app/has_initialized_v1`: Bandera booleana para distinguir la primera ejecución de una lista vaciada voluntariamente por el usuario.
 - **Flujo de primera ejecución**: Si `has_initialized_v1` y `reminders_v1` son nulos, se guardan los datos iniciales de muestra (`INITIAL_REMINDERS`) y se marca la bandera. Si el usuario borra todos sus recordatorios, la app permanece vacía y no regenera los ejemplos.
+- **Diferenciación estricta entre error y lista vacía**: La función `getStoredReminders` lanza `StorageReadError` ante fallos de I/O o datos JSON corruptos. Esto impide que un fallo transitorio de lectura sea interpretado como una lista vacía, protegiendo las notificaciones programadas contra cancelaciones erróneas.
+- **Cola asíncrona secuencial (`AsyncQueue`)**: Todas las escrituras y modificaciones (`addReminder`, `updateReminder`, `toggleReminder`, `deleteReminder`) se procesan secuencialmente en orden FIFO. Se eliminaron todos los efectos secundarios dentro de actualizadores de estado de React, evitando condiciones de carrera y escrituras fuera de orden cuando se interactúa rápidamente con la interfaz.
 - **Migración transparente (`migrateReminder`)**: Si un recordatorio antiguo carece de `repeatType`, la función analiza el texto de `frequency` o el arreglo `days` y deduce de forma determinista el tipo (`monthly`, `weekly`, `once` o `daily`), rellenando `dayOfMonth`, `targetDate` o `days` sin pérdida de información.
 
 ---
 
 ## 7. Programación de Notificaciones
 
-Ubicación: `src/services/notification-service.ts`
+Ubicación: `src/services/notification-core.ts` y `src/services/notification-service.ts`
 
 ### 7.1 Configuración Nativa en Android
 - **Canal de notificación**:
@@ -182,25 +184,26 @@ Ubicación: `src/services/notification-service.ts`
   - `android.permission.USE_EXACT_ALARM`
 - **Entrega de precisión**: Todos los triggers utilizan `delivery: 'alarmClock'`, lo que indica a Android que debe despertar el dispositivo incluso bajo restricciones estrictas de batería.
 
-### 7.2 Tipos de Triggers Programados
+### 7.2 Tipos de Triggers y Resiliencia ante Fallos Parciales
 1. **Una sola vez (`once`)**:
    - `SchedulableTriggerInputTypes.DATE`
    - Parsea la fecha local `targetDate` (YYYY-MM-DD) y la hora `time`.
    - Si la fecha y hora ya pasaron en relación con `Date.now()`, no programa la notificación y devuelve el error controlado `PAST_DATETIME`.
 2. **Diario (`daily`)**:
    - `SchedulableTriggerInputTypes.DAILY`
-   - Se programa con `hour` y `minute` parseados a formato 24 horas.
+   - Se programa con `hour` y `minute` parseados a formato 24 horas. Metadatos incluyen `time` para validar frescura en reconciliación.
 3. **Semanal (`weekly`)**:
    - Se crea un trigger individual `SchedulableTriggerInputTypes.WEEKLY` por cada día marcado en `reminder.days`.
-   - Mapeo en `src/utils/reminder-dates.ts`: `D`=1 (Domingo), `L`=2 (Lunes), `M`=3, `X`=4, `J`=5, `V`=6, `S`=7 (Sábado).
-   - Los identificadores generados se consolidan en `notificationIds`.
+   - **Rollback ante fallos parciales**: Si la programación de algún día falla a mitad del proceso, se cancelan automáticamente las notificaciones programadas previas en ese intento, impidiendo alertas huérfanas en Android.
 4. **Mensual (`monthly`)**: Ver sección 8.
 
-### 7.3 Reconciliación Automática (`reconcileScheduledNotifications`)
+### 7.3 Reconciliación Robusta (`reconcileScheduledNotifications`)
 - Se ejecuta al abrir la aplicación a través del hook `useReminders`.
-- Obtiene la lista activa de notificaciones programadas en el sistema mediante `getAllScheduledNotifications()`.
-- Si un recordatorio activo no tiene sus notificaciones registradas (por reinicio, limpieza del sistema o cambio de estado), las reprograma y actualiza los IDs en `AsyncStorage`.
-- Si un recordatorio fue desactivado o eliminado, cancela cualquier notificación huérfana en el sistema.
+- **Limpieza de huérfanas**: Identifica notificaciones nativas con `data.reminderId` cuyo recordatorio ya no existe o está inactivo y las cancela.
+- **Protección de notificaciones ajenas**: No cancela notificaciones de diagnóstico (`type === 'test_notification'`) ni de módulos ajenos.
+- **Deduplicación**: Si existen notificaciones duplicadas para un mismo recordatorio o día, conserva solo una y cancela los duplicados redundantes.
+- **Detección de obsolescencia**: Si la hora, la frecuencia o los días cambiaron, cancela los disparadores viejos y programa los nuevos.
+- **Confirmación de cancelación**: Las funciones de cancelación no reportan éxito a menos que todos los IDs objetivo hayan sido cancelados efectivamente.
 
 ---
 
