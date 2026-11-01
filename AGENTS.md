@@ -1,4 +1,4 @@
-This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
+This is Remind, an Expo/React Native Android reminder app (Expo SDK 58). Prioritize mobile-first patterns, performance, and notification reliability.
 
 ## Expo has changed — do not trust your training data
 
@@ -13,15 +13,15 @@ Expo ships breaking changes every SDK release. APIs you remember are likely rena
 Use `bunx` instead of `npx` if the project uses bun (`bun.lock` present).
 
 ```bash
-npx expo install <package>  # ALWAYS use instead of npm/yarn/pnpm/bun add — resolves SDK-compatible versions
-npx expo start              # start the dev server
-npx expo lint               # lint
-npx tsc --noEmit            # typecheck
-npx expo-doctor             # diagnose dependency and config issues
-npx expo install --fix      # fix incompatible package versions
+npx expo start              # Iniciar el servidor de desarrollo
+npx expo lint               # Ejecutar ESLint
+npx tsc --noEmit            # Comprobación de tipos TypeScript
+npm test                    # Ejecutar tests unitarios (Node.js test runner)
+npx expo-doctor             # Diagnosticar problemas de configuración
 ```
 
-Run lint and typecheck before declaring any task done.
+> [!WARNING]
+> No ejecutes `npx expo install --fix` ni actualices paquetes automáticamente; puede alterar versiones probadas y romper la compilación de la APK.
 
 ## Navigation & Routing
 
@@ -29,13 +29,22 @@ Run lint and typecheck before declaring any task done.
 - Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
 - Docs: https://docs.expo.dev/router/introduction.md
 
-## Building with EAS
+## Native Builds & Android Environment
 
-Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
-Docs: https://docs.expo.dev/eas/index.md
+- Remind cuenta con una **APK Beta 0.1 funcional** compilada con EAS Build (`preview`, buildType `apk`).
+- Remind utiliza alarmas nativas exactas de Android (`delivery: 'alarmClock'`, `SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED`). Expo Go **no** soporta la totalidad de estos comportamientos de alarma en segundo plano; las pruebas de notificaciones requieren development builds o la APK compilada.
+- Si los directorios `ios/` y `android/` no existen, son generados por Continuous Native Generation (CNG). No los crees ni edites a mano; configura el comportamiento nativo en `app.json` y plugins.
+- **No generar APK (`eas build`) sin autorización previa del usuario.**
 
-## Rules
+## Reglas Obligatorias de Remind
 
-- If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
-- Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
-- Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+1. **Interfaz oscura y en español**: Mantener todos los textos, fechas y componentes en español y con la paleta visual oscura One UI (`#000000`, `#111317`, `#2563EB`).
+2. **Compatibilidad de datos en AsyncStorage**: Preservar el esquema `@remind_app/reminders_v1` y la función de migración transparente (`migrateReminder`). Nunca introducir cambios de modelo que rompan recordatorios guardados.
+3. **No alterar la lógica de notificaciones sin comprobar consecuencias**: Todo cambio en canales, triggers (`once`, `daily`, `weekly`, `monthly`), cálculo de horizonte 24 meses (días 29-31) o reconciliación debe verificarse minuciosamente con pruebas unitarias y análisis de impacto.
+4. **No actualizar Expo ni dependencias innecesariamente**: Mantener las versiones fijadas en `package.json` para no desestabilizar la APK funcional.
+5. **Mantener la arquitectura y componentes existentes**: Respetar la modularización en `src/services/`, `src/utils/`, `src/hooks/` y `src/components/reminders/`.
+6. **Cambios pequeños y enfocados**: Desarrollar mediante modificaciones acotadas y verificables paso a paso; no realizar refactorizaciones masivas imprevistas.
+7. **No generar APK sin autorización**: La compilación en la nube consume tiempo y recursos; solicitar siempre aprobación antes de invocar `eas build`.
+8. **Validación estricta de código**: Ejecutar `npx tsc --noEmit` y `npx expo lint` después de cualquier modificación de código antes de dar la tarea por concluida.
+9. **Respaldos Git antes de cambios importantes**: Crear un commit o rama de respaldo antes de intervenciones estructurales.
+10. **Consultar `docs/PROJECT_CONTEXT.md`**: Leer siempre este documento técnico al inicio de nuevas conversaciones para conocer la arquitectura, los detalles de implementación y el estado del proyecto.
