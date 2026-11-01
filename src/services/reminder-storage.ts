@@ -1,9 +1,43 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { Reminder, RepeatType } from '@/types/reminder';
+import type { Reminder, RepeatType } from '../types/reminder.ts';
 
-const STORAGE_KEY = '@remind_app/reminders_v1';
-const INITIALIZED_KEY = '@remind_app/has_initialized_v1';
+export const STORAGE_KEY = '@remind_app/reminders_v1';
+export const INITIALIZED_KEY = '@remind_app/has_initialized_v1';
+
+export class StorageReadError extends Error {
+  override cause?: unknown;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'StorageReadError';
+    this.cause = cause;
+  }
+}
+
+export interface StorageAdapter {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+}
+
+/**
+ * Cola asíncrona secuencial (FIFO) para evitar condiciones de carrera,
+ * ejecuciones concurrentes y escrituras fuera de orden.
+ */
+export class AsyncQueue {
+  private queue: Promise<unknown> = Promise.resolve();
+
+  enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const runTask = () => task();
+    const resultPromise = this.queue.then(runTask, runTask);
+    // Asegurar que la cola continúe procesando tareas incluso si una falla
+    this.queue = resultPromise.then(
+      () => {},
+      () => {}
+    );
+    return resultPromise;
+  }
+}
 
 export const INITIAL_REMINDERS: Reminder[] = [
   {
@@ -102,44 +136,66 @@ export function migrateReminder(raw: Reminder): Reminder {
  * - Distingue entre una primera ejecución y una lista vaciada intencionalmente.
  * - Si es la primera vez que se abre la app, almacena y retorna los recordatorios de ejemplo.
  * - Si ya se ha inicializado previamente, retorna los datos guardados aplicando migración transparente.
+ * - Lanza StorageReadError ante errores de I/O o datos corruptos para no confundir un error con una lista vacía.
  */
-export async function getStoredReminders(): Promise<Reminder[]> {
+export async function getStoredReminders(
+  storage: StorageAdapter = AsyncStorage
+): Promise<Reminder[]> {
   try {
     const [rawReminders, hasInitialized] = await Promise.all([
-      AsyncStorage.getItem(STORAGE_KEY),
-      AsyncStorage.getItem(INITIALIZED_KEY),
+      storage.getItem(STORAGE_KEY),
+      storage.getItem(INITIALIZED_KEY),
     ]);
 
     // Caso 1: Primera ejecución de la app (nunca antes inicializada)
     if (hasInitialized === null && rawReminders === null) {
-      await saveStoredReminders(INITIAL_REMINDERS);
-      await AsyncStorage.setItem(INITIALIZED_KEY, 'true');
+      await saveStoredReminders(INITIAL_REMINDERS, storage);
+      await storage.setItem(INITIALIZED_KEY, 'true');
       return INITIAL_REMINDERS;
     }
 
     // Caso 2: App ya inicializada, hay datos guardados
     if (rawReminders !== null) {
-      const parsed = JSON.parse(rawReminders);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawReminders);
+      } catch (parseError) {
+        throw new StorageReadError(
+          'Error al parsear el contenido de recordatorios almacenados.',
+          parseError
+        );
+      }
+
       if (Array.isArray(parsed)) {
         return parsed.map(migrateReminder);
       }
+
+      throw new StorageReadError(
+        'El formato de recordatorios almacenados no es un arreglo válido.'
+      );
     }
 
-    // Caso 3: App ya inicializada pero la lista está vacía
+    // Caso 3: App ya inicializada pero la lista está vacía (legítimamente vacía)
     return [];
   } catch (error) {
+    if (error instanceof StorageReadError) {
+      throw error;
+    }
     console.error('[ReminderStorage] Error al leer recordatorios de AsyncStorage:', error);
-    return [];
+    throw new StorageReadError('Error al leer recordatorios de AsyncStorage.', error);
   }
 }
 
 /**
  * Guarda la lista de recordatorios en el almacenamiento local.
  */
-export async function saveStoredReminders(reminders: Reminder[]): Promise<boolean> {
+export async function saveStoredReminders(
+  reminders: Reminder[],
+  storage: StorageAdapter = AsyncStorage
+): Promise<boolean> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(reminders));
-    await AsyncStorage.setItem(INITIALIZED_KEY, 'true');
+    await storage.setItem(STORAGE_KEY, JSON.stringify(reminders));
+    await storage.setItem(INITIALIZED_KEY, 'true');
     return true;
   } catch (error) {
     console.error('[ReminderStorage] Error al guardar recordatorios en AsyncStorage:', error);
