@@ -10,13 +10,34 @@ import {
   View,
 } from 'react-native';
 
-const ITEM_HEIGHT = 64;
-const VISIBLE_ITEMS = 3;
-const PICKER_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS;
+import {
+  BASE_HOURS,
+  BASE_MINUTES,
+  formatSelectedTime,
+  HOURS_DATA,
+  HOURS_MIDDLE_CYCLE,
+  ITEM_HEIGHT,
+  MINUTES_DATA,
+  MINUTES_MIDDLE_CYCLE,
+  parseTimeToState,
+  PERIODS,
+  PICKER_HEIGHT,
+  shouldRecenter,
+} from '@/utils/wheel-time-utils';
 
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 1); // [1, 2, ..., 12]
-const MINUTES = Array.from({ length: 60 }, (_, i) => (i < 10 ? `0${i}` : `${i}`)); // ['00', '01', ..., '59']
-const PERIODS: ('a.m.' | 'p.m.')[] = ['a.m.', 'p.m.'];
+export {
+  BASE_HOURS,
+  BASE_MINUTES,
+  formatSelectedTime,
+  HOURS_DATA,
+  HOURS_MIDDLE_CYCLE,
+  ITEM_HEIGHT,
+  MINUTES_DATA,
+  MINUTES_MIDDLE_CYCLE,
+  parseTimeToState,
+  PERIODS,
+  PICKER_HEIGHT,
+};
 
 export interface WheelTimePickerProps {
   visible: boolean;
@@ -27,39 +48,137 @@ export interface WheelTimePickerProps {
 
 interface WheelColumnProps<T> {
   data: T[];
-  selectedIndex: number;
-  onSelect: (index: number) => void;
+  baseCount: number;
+  selectedBaseIndex: number;
+  onSelectBaseIndex: (index: number) => void;
+  isInfinite?: boolean;
+  middleCycle?: number;
+  minCycleRecenteringThreshold?: number;
+  maxCycleRecenteringThreshold?: number;
   formatLabel?: (item: T) => string;
   width?: number;
 }
 
 function WheelColumn<T extends string | number>({
   data,
-  selectedIndex,
-  onSelect,
+  baseCount,
+  selectedBaseIndex,
+  onSelectBaseIndex,
+  isInfinite = false,
+  middleCycle = 0,
+  minCycleRecenteringThreshold = 15,
+  maxCycleRecenteringThreshold = 45,
   formatLabel,
   width = 76,
 }: WheelColumnProps<T>) {
+  const initialFullIndex = isInfinite
+    ? middleCycle * baseCount + selectedBaseIndex
+    : selectedBaseIndex;
+
+  const [currentCenterIndex, setCurrentCenterIndex] = useState(initialFullIndex);
   const listRef = useRef<FlatList>(null);
-  const isUserScrolling = useRef(false);
+  const isDraggingRef = useRef(false);
+  const isMomentumRef = useRef(false);
+  const dragEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Asegura la alineación inicial al montar
   useEffect(() => {
-    if (!isUserScrolling.current) {
-      listRef.current?.scrollToOffset({
-        offset: selectedIndex * ITEM_HEIGHT,
-        animated: false,
-      });
-    }
-  }, [selectedIndex]);
+    listRef.current?.scrollToOffset({
+      offset: initialFullIndex * ITEM_HEIGHT,
+      animated: false,
+    });
 
-  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    isUserScrolling.current = false;
-    const offsetY = e.nativeEvent.contentOffset.y;
-    const index = Math.round(offsetY / ITEM_HEIGHT);
-    const clamped = Math.max(0, Math.min(data.length - 1, index));
-    if (clamped !== selectedIndex) {
-      onSelect(clamped);
+    return () => {
+      if (dragEndTimerRef.current) {
+        clearTimeout(dragEndTimerRef.current);
+      }
+    };
+  }, [initialFullIndex]);
+
+  /**
+   * Finaliza el desplazamiento, actualiza el valor seleccionado
+   * y recentra silenciosamente si la rueda infinita se alejó del centro.
+   */
+  const settle = (offsetY: number) => {
+    const rawIndex = Math.round(offsetY / ITEM_HEIGHT);
+    const clampedIndex = Math.max(0, Math.min(data.length - 1, rawIndex));
+
+    // Ajuste pixel-perfect al intervalo más cercano
+    listRef.current?.scrollToOffset({
+      offset: clampedIndex * ITEM_HEIGHT,
+      animated: false,
+    });
+
+    setCurrentCenterIndex(clampedIndex);
+
+    // Actualiza el valor base en el componente padre
+    const baseIndex = clampedIndex % baseCount;
+    onSelectBaseIndex(baseIndex);
+
+    // Recentrado silencioso para ruedas infinitas
+    if (isInfinite) {
+      const currentCycle = Math.floor(clampedIndex / baseCount);
+      if (shouldRecenter(currentCycle, minCycleRecenteringThreshold, maxCycleRecenteringThreshold)) {
+        const recenterIndex = middleCycle * baseCount + baseIndex;
+        listRef.current?.scrollToOffset({
+          offset: recenterIndex * ITEM_HEIGHT,
+          animated: false,
+        });
+        setCurrentCenterIndex(recenterIndex);
+      }
     }
+  };
+
+  /**
+   * Actualiza el elemento central visualmente mientras la rueda gira con inercia
+   */
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetY = e.nativeEvent.contentOffset.y;
+    const rawIndex = Math.round(offsetY / ITEM_HEIGHT);
+    const clampedIndex = Math.max(0, Math.min(data.length - 1, rawIndex));
+    if (clampedIndex !== currentCenterIndex) {
+      setCurrentCenterIndex(clampedIndex);
+    }
+  };
+
+  const handleScrollBeginDrag = () => {
+    isDraggingRef.current = true;
+    isMomentumRef.current = false;
+    if (dragEndTimerRef.current) {
+      clearTimeout(dragEndTimerRef.current);
+      dragEndTimerRef.current = null;
+    }
+  };
+
+  const handleScrollEndDrag = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    isDraggingRef.current = false;
+    const velocity = Math.abs(e.nativeEvent.velocity?.y || 0);
+
+    // Si la velocidad fue baja, no habrá inercia o será instantánea.
+    // Programamos un breve temporizador de respaldo en caso de que no inicie momentum.
+    if (velocity < 0.1) {
+      if (dragEndTimerRef.current) {
+        clearTimeout(dragEndTimerRef.current);
+      }
+      dragEndTimerRef.current = setTimeout(() => {
+        if (!isMomentumRef.current && !isDraggingRef.current) {
+          settle(e.nativeEvent.contentOffset.y);
+        }
+      }, 100);
+    }
+  };
+
+  const handleMomentumScrollBegin = () => {
+    isMomentumRef.current = true;
+    if (dragEndTimerRef.current) {
+      clearTimeout(dragEndTimerRef.current);
+      dragEndTimerRef.current = null;
+    }
+  };
+
+  const handleMomentumScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    isMomentumRef.current = false;
+    settle(e.nativeEvent.contentOffset.y);
   };
 
   return (
@@ -70,27 +189,37 @@ function WheelColumn<T extends string | number>({
         keyExtractor={(_, index) => index.toString()}
         showsVerticalScrollIndicator={false}
         snapToInterval={ITEM_HEIGHT}
-        decelerationRate="fast"
+        snapToAlignment="start"
+        decelerationRate={0.98}
+        disableIntervalMomentum={false}
         bounces={false}
+        scrollEventThrottle={16}
         contentContainerStyle={styles.columnContent}
-        initialScrollIndex={selectedIndex}
+        initialScrollIndex={initialFullIndex}
         getItemLayout={(_, index) => ({
           length: ITEM_HEIGHT,
           offset: ITEM_HEIGHT * index,
           index,
         })}
-        onScrollBeginDrag={() => {
-          isUserScrolling.current = true;
-        }}
-        onScrollEndDrag={handleScrollEnd}
-        onMomentumScrollEnd={handleScrollEnd}
+        windowSize={5}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        removeClippedSubviews={false}
+        onScroll={handleScroll}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollBegin={handleMomentumScrollBegin}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
         onScrollToIndexFailed={(info) => {
           setTimeout(() => {
-            listRef.current?.scrollToIndex({ index: info.index, animated: false });
+            listRef.current?.scrollToOffset({
+              offset: info.index * ITEM_HEIGHT,
+              animated: false,
+            });
           }, 30);
         }}
         renderItem={({ item, index }) => {
-          const isSelected = index === selectedIndex;
+          const isSelected = index === currentCenterIndex;
           const label = formatLabel ? formatLabel(item) : `${item}`;
 
           return (
@@ -102,7 +231,9 @@ function WheelColumn<T extends string | number>({
                   offset: index * ITEM_HEIGHT,
                   animated: true,
                 });
-                onSelect(index);
+                setTimeout(() => {
+                  settle(index * ITEM_HEIGHT);
+                }, 280);
               }}
               style={styles.itemContainer}>
               <Text
@@ -120,52 +251,6 @@ function WheelColumn<T extends string | number>({
   );
 }
 
-/**
- * Convierte cualquier string de hora ("08:00 AM", "6:00 PM", "12:00 AM")
- * a estado interno seguro en formato 24 horas y sus componentes 12h correspondientes.
- */
-function parseTimeToState(timeStr: string): { hour12: number; minute: number; period: 'a.m.' | 'p.m.' } {
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM|a\.?\s*m\.?|p\.?\s*m\.?)?$/i);
-  let hours24 = 8;
-  let minutes = 0;
-
-  if (match) {
-    let h = parseInt(match[1], 10);
-    const m = parseInt(match[2], 10);
-    const ampm = match[3]?.toLowerCase();
-
-    const isPM = ampm && (ampm.includes('p') || ampm === 'pm');
-    const isAM = ampm && (ampm.includes('a') || ampm === 'am');
-
-    if (isPM && h < 12) h += 12;
-    if (isAM && h === 12) h = 0;
-
-    hours24 = Math.max(0, Math.min(23, h));
-    minutes = Math.max(0, Math.min(59, m));
-  }
-
-  // De 24h a 12h
-  const isPM = hours24 >= 12;
-  let hour12 = hours24 % 12;
-  if (hour12 === 0) hour12 = 12;
-
-  return {
-    hour12,
-    minute: minutes,
-    period: isPM ? 'p.m.' : 'a.m.',
-  };
-}
-
-/**
- * Convierte la selección de 12 horas a string final formateado para Remind: "08:00 AM" / "12:00 PM"
- */
-function formatSelectedTime(hour12: number, minute: number, period: 'a.m.' | 'p.m.'): string {
-  const ampm = period === 'p.m.' ? 'PM' : 'AM';
-  const hStr = hour12 < 10 ? `0${hour12}` : `${hour12}`;
-  const mStr = minute < 10 ? `0${minute}` : `${minute}`;
-  return `${hStr}:${mStr} ${ampm}`;
-}
-
 interface ContentProps {
   initialTime: string;
   onConfirm: (formattedTime: string) => void;
@@ -179,9 +264,9 @@ function WheelPickerContent({ initialTime, onConfirm, onCancel }: ContentProps) 
   const [selectedMinute, setSelectedMinute] = useState(parsed.minute);
   const [selectedPeriod, setSelectedPeriod] = useState<'a.m.' | 'p.m.'>(parsed.period);
 
-  const hourIndex = Math.max(0, HOURS.indexOf(selectedHour));
-  const minuteIndex = Math.max(0, selectedMinute);
-  const periodIndex = selectedPeriod === 'p.m.' ? 1 : 0;
+  const hourBaseIndex = Math.max(0, BASE_HOURS.indexOf(selectedHour));
+  const minuteBaseIndex = Math.max(0, selectedMinute);
+  const periodBaseIndex = selectedPeriod === 'p.m.' ? 1 : 0;
 
   const handleConfirm = () => {
     const formatted = formatSelectedTime(selectedHour, selectedMinute, selectedPeriod);
@@ -197,11 +282,16 @@ function WheelPickerContent({ initialTime, onConfirm, onCancel }: ContentProps) 
 
         {/* Área principal de ruedas verticales estilo Samsung One UI */}
         <View style={styles.wheelsContainer}>
-          {/* Rueda de Horas (1-12) */}
+          {/* Rueda circular infinita de Horas (1-12) */}
           <WheelColumn
-            data={HOURS}
-            selectedIndex={hourIndex}
-            onSelect={(idx) => setSelectedHour(HOURS[idx])}
+            data={HOURS_DATA}
+            baseCount={12}
+            selectedBaseIndex={hourBaseIndex}
+            onSelectBaseIndex={(idx) => setSelectedHour(BASE_HOURS[idx])}
+            isInfinite={true}
+            middleCycle={HOURS_MIDDLE_CYCLE}
+            minCycleRecenteringThreshold={20}
+            maxCycleRecenteringThreshold={100}
             width={80}
           />
 
@@ -210,19 +300,26 @@ function WheelPickerContent({ initialTime, onConfirm, onCancel }: ContentProps) 
             <Text style={styles.colonText}>:</Text>
           </View>
 
-          {/* Rueda de Minutos (00-59) */}
+          {/* Rueda circular infinita de Minutos (00-59) */}
           <WheelColumn
-            data={MINUTES}
-            selectedIndex={minuteIndex}
-            onSelect={(idx) => setSelectedMinute(parseInt(MINUTES[idx], 10))}
+            data={MINUTES_DATA}
+            baseCount={60}
+            selectedBaseIndex={minuteBaseIndex}
+            onSelectBaseIndex={(idx) => setSelectedMinute(parseInt(BASE_MINUTES[idx], 10))}
+            isInfinite={true}
+            middleCycle={MINUTES_MIDDLE_CYCLE}
+            minCycleRecenteringThreshold={10}
+            maxCycleRecenteringThreshold={50}
             width={80}
           />
 
           {/* Rueda de AM / PM */}
           <WheelColumn
             data={PERIODS}
-            selectedIndex={periodIndex}
-            onSelect={(idx) => setSelectedPeriod(PERIODS[idx])}
+            baseCount={2}
+            selectedBaseIndex={periodBaseIndex}
+            onSelectBaseIndex={(idx) => setSelectedPeriod(PERIODS[idx])}
+            isInfinite={false}
             width={90}
           />
         </View>
