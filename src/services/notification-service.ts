@@ -6,32 +6,61 @@ import {
   SchedulableTriggerInputTypes,
 } from 'expo-notifications';
 
-import { Reminder } from '@/types/reminder';
+import type { Reminder } from '../types/reminder.ts';
+import { parseTimeString } from '../utils/reminder-dates.ts';
 import {
-  calculateMonthlyOccurrences,
-  DAY_KEY_TO_EXPO_WEEKDAY,
-  getLocalDateString,
-  parseLocalDateString,
-  parseTimeString,
-} from '@/utils/reminder-dates';
+  ANDROID_CHANNEL_ID,
+  ANDROID_CHANNEL_NAME,
+  cancelReminderNotificationsCore,
+  getReminderNotificationIds,
+  MONTH_NAMES_SPANISH,
+  NotificationAdapter,
+  NotificationContentData,
+  reconcileScheduledNotificationsCore,
+  scheduleReminderNotificationCore,
+  ScheduleReminderResult,
+} from './notification-core.ts';
 
-export const ANDROID_CHANNEL_ID = 'recordatorios';
-export const ANDROID_CHANNEL_NAME = 'Recordatorios';
+export {
+  ANDROID_CHANNEL_ID,
+  ANDROID_CHANNEL_NAME,
+  getReminderNotificationIds,
+  MONTH_NAMES_SPANISH,
+  NotificationAdapter,
+  ScheduleReminderResult,
+};
 
-const MONTH_NAMES_SPANISH = [
-  'enero',
-  'febrero',
-  'marzo',
-  'abril',
-  'mayo',
-  'junio',
-  'julio',
-  'agosto',
-  'septiembre',
-  'octubre',
-  'noviembre',
-  'diciembre',
-];
+/**
+ * Adaptador que conecta las operaciones del motor de recordatorios
+ * con la API nativa de expo-notifications.
+ */
+export const defaultExpoAdapter: NotificationAdapter = {
+  scheduleNotification: async (request) => {
+    return await Notifications.scheduleNotificationAsync(
+      request as Notifications.NotificationRequestInput
+    );
+  },
+  cancelNotification: async (identifier) => {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(identifier);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  getAllScheduled: async () => {
+    const list = await Notifications.getAllScheduledNotificationsAsync();
+    return list.map((item) => ({
+      identifier: item.identifier,
+      content: {
+        title: item.content.title,
+        body: item.content.body,
+        data: item.content.data as NotificationContentData | undefined,
+      },
+      trigger: item.trigger,
+    }));
+  },
+};
 
 /**
  * Configuración del manejador de notificaciones en primer plano.
@@ -120,17 +149,13 @@ export interface ScheduleTestResult {
 /**
  * Programa una notificación local de prueba para dentro de un número determinado de segundos
  * (por defecto 60 segundos).
- *
- * Configura previamente el canal de Android y verifica los permisos.
  */
 export async function scheduleTestNotification(
   seconds: number = 60
 ): Promise<ScheduleTestResult> {
   try {
-    // 1. Asegurar el canal de notificación en Android antes de pedir permisos
     await setupNotificationChannel();
 
-    // 2. Comprobar/solicitar permisos
     const perms = await requestNotificationPermissions();
     if (!perms.granted) {
       return {
@@ -141,7 +166,6 @@ export async function scheduleTestNotification(
       };
     }
 
-    // 3. Programar la notificación local con entrega tipo alarmClock para despertar el dispositivo en reposo
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Recordatorio de prueba',
@@ -173,42 +197,13 @@ export async function scheduleTestNotification(
   }
 }
 
-export interface ScheduleReminderResult {
-  success: boolean;
-  notificationId?: string; // Primer identificador programado (compatibilidad)
-  notificationIds?: string[]; // Todos los identificadores generados
-  error?: 'PERMISSION_DENIED' | 'PAST_DATETIME' | 'NO_DAYS_SELECTED' | 'UNSUPPORTED_REPEAT_TYPE' | 'SCHEDULE_FAILED' | string;
-  errorMessage?: string;
-  permissionDenied?: boolean;
-}
-
-/**
- * Obtiene todos los IDs de notificación de un recordatorio,
- * unificando notificationIds y el notificationId clásico.
- */
-export function getReminderNotificationIds(reminder: Reminder): string[] {
-  if (reminder.notificationIds && Array.isArray(reminder.notificationIds) && reminder.notificationIds.length > 0) {
-    return reminder.notificationIds.filter((id) => typeof id === 'string' && id.length > 0);
-  }
-  if (reminder.notificationId && typeof reminder.notificationId === 'string' && reminder.notificationId.length > 0) {
-    return [reminder.notificationId];
-  }
-  return [];
-}
-
 /**
  * Programa las notificaciones para un recordatorio real de Remind.
- * Soporta recordatorios de tipo:
- * - 'once': una sola vez (trigger de fecha/hora exacta)
- * - 'daily': diario (trigger que se repite cada día a la hora fijada)
- * - 'weekly': semanal personalizado (un trigger por cada día seleccionado en days)
- * - 'monthly': mensual
- *     - Días 1 a 28: activador nativo MONTHLY de expo-notifications.
- *     - Días 29 a 31: horizonte calculado de 24 meses con fechas DATE concretas,
- *       ajustando al último día de meses más cortos (ej. Feb 28/29, Abr 30).
+ * Comprueba permisos, canal y delega en el motor de programación con rollback.
  */
 export async function scheduleReminderNotification(
-  reminder: Reminder
+  reminder: Reminder,
+  adapter: NotificationAdapter = defaultExpoAdapter
 ): Promise<ScheduleReminderResult> {
   try {
     if (!reminder.isActive) {
@@ -219,10 +214,8 @@ export async function scheduleReminderNotification(
       };
     }
 
-    // 1. Asegurar el canal de notificación en Android
     await setupNotificationChannel();
 
-    // 2. Comprobar permisos
     const perms = await requestNotificationPermissions();
     if (!perms.granted) {
       return {
@@ -234,222 +227,9 @@ export async function scheduleReminderNotification(
       };
     }
 
-    // Caso 1: Una sola vez ('once')
-    if (reminder.repeatType === 'once') {
-      const dateStr = reminder.targetDate || getLocalDateString();
-      const targetDate = parseLocalDateString(dateStr);
-      const parsedTime = parseTimeString(reminder.time);
-      targetDate.setHours(parsedTime.getHours(), parsedTime.getMinutes(), 0, 0);
-
-      // Si la fecha y hora ya pasaron, no se programa notificación
-      if (targetDate.getTime() <= Date.now()) {
-        return {
-          success: false,
-          error: 'PAST_DATETIME',
-          errorMessage: 'La fecha y hora del recordatorio ya han transcurrido.',
-        };
-      }
-
-      const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: reminder.title,
-          body: `Recordatorio programado para las ${reminder.time}`,
-          data: {
-            reminderId: reminder.id,
-            repeatType: reminder.repeatType,
-          },
-        },
-        trigger: {
-          type: SchedulableTriggerInputTypes.DATE,
-          date: targetDate,
-          channelId: ANDROID_CHANNEL_ID,
-          delivery: 'alarmClock',
-        },
-      });
-
-      return {
-        success: true,
-        notificationId,
-        notificationIds: [notificationId],
-      };
-    }
-
-    // Caso 2: Diario ('daily')
-    if (reminder.repeatType === 'daily') {
-      const parsedTime = parseTimeString(reminder.time);
-      const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: reminder.title,
-          body: `Recordatorio diario a las ${reminder.time}`,
-          data: {
-            reminderId: reminder.id,
-            repeatType: reminder.repeatType,
-          },
-        },
-        trigger: {
-          type: SchedulableTriggerInputTypes.DAILY,
-          hour: parsedTime.getHours(),
-          minute: parsedTime.getMinutes(),
-          channelId: ANDROID_CHANNEL_ID,
-          delivery: 'alarmClock',
-        },
-      });
-
-      return {
-        success: true,
-        notificationId,
-        notificationIds: [notificationId],
-      };
-    }
-
-    // Caso 3: Semanal personalizado ('weekly')
-    if (reminder.repeatType === 'weekly') {
-      const selectedDays = reminder.days || [];
-      if (selectedDays.length === 0) {
-        return {
-          success: false,
-          error: 'NO_DAYS_SELECTED',
-          errorMessage: 'No se han seleccionado días de la semana para este recordatorio.',
-        };
-      }
-
-      const parsedTime = parseTimeString(reminder.time);
-      const hour = parsedTime.getHours();
-      const minute = parsedTime.getMinutes();
-      const scheduledIds: string[] = [];
-
-      for (const dayKey of selectedDays) {
-        const expoWeekday = DAY_KEY_TO_EXPO_WEEKDAY[dayKey];
-        if (expoWeekday === undefined) {
-          continue;
-        }
-
-        const id = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: reminder.title,
-            body: `Recordatorio semanal (${dayKey}) a las ${reminder.time}`,
-            data: {
-              reminderId: reminder.id,
-              repeatType: 'weekly',
-              dayKey,
-              weekday: expoWeekday,
-            },
-          },
-          trigger: {
-            type: SchedulableTriggerInputTypes.WEEKLY,
-            weekday: expoWeekday,
-            hour,
-            minute,
-            channelId: ANDROID_CHANNEL_ID,
-            delivery: 'alarmClock',
-          },
-        });
-
-        scheduledIds.push(id);
-      }
-
-      if (scheduledIds.length === 0) {
-        return {
-          success: false,
-          error: 'SCHEDULE_FAILED',
-          errorMessage: 'No fue posible programar los días semanales seleccionados.',
-        };
-      }
-
-      return {
-        success: true,
-        notificationId: scheduledIds[0],
-        notificationIds: scheduledIds,
-      };
-    }
-
-    // Caso 4: Mensual ('monthly')
-    if (reminder.repeatType === 'monthly') {
-      const dayOfMonth = Math.min(31, Math.max(1, reminder.dayOfMonth ?? 15));
-      const parsedTime = parseTimeString(reminder.time);
-      const hour = parsedTime.getHours();
-      const minute = parsedTime.getMinutes();
-
-      // Subcaso 4A: Días fijos (1 al 28) - Activador MONTHLY nativo
-      if (dayOfMonth <= 28) {
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: reminder.title,
-            body: `Recordatorio mensual (día ${dayOfMonth}) a las ${reminder.time}`,
-            data: {
-              reminderId: reminder.id,
-              repeatType: 'monthly',
-              dayOfMonth,
-              mode: 'native_monthly',
-            },
-          },
-          trigger: {
-            type: SchedulableTriggerInputTypes.MONTHLY,
-            day: dayOfMonth,
-            hour,
-            minute,
-            channelId: ANDROID_CHANNEL_ID,
-            delivery: 'alarmClock',
-          },
-        });
-
-        return {
-          success: true,
-          notificationId,
-          notificationIds: [notificationId],
-        };
-      }
-
-      // Subcaso 4B: Días variables (29, 30 y 31) - Horizonte calculado de 24 meses
-      const occurrences = calculateMonthlyOccurrences(dayOfMonth, reminder.time, 24);
-      if (occurrences.length === 0) {
-        return {
-          success: false,
-          error: 'PAST_DATETIME',
-          errorMessage: 'No se encontraron ocurrencias futuras para este recordatorio mensual.',
-        };
-      }
-
-      const scheduledIds: string[] = [];
-      for (const occurrence of occurrences) {
-        const dateIso = occurrence.toISOString().slice(0, 10);
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: reminder.title,
-            body: `Recordatorio mensual (${occurrence.getDate()} de ${MONTH_NAMES_SPANISH[occurrence.getMonth()]}) a las ${reminder.time}`,
-            data: {
-              reminderId: reminder.id,
-              repeatType: 'monthly',
-              dayOfMonth,
-              targetDateIso: dateIso,
-              mode: 'calculated_date_horizon',
-            },
-          },
-          trigger: {
-            type: SchedulableTriggerInputTypes.DATE,
-            date: occurrence,
-            channelId: ANDROID_CHANNEL_ID,
-            delivery: 'alarmClock',
-          },
-        });
-        scheduledIds.push(notificationId);
-      }
-
-      return {
-        success: scheduledIds.length > 0,
-        notificationId: scheduledIds[0],
-        notificationIds: scheduledIds,
-      };
-    }
-
-    return {
-      success: false,
-      error: 'UNSUPPORTED_REPEAT_TYPE',
-      errorMessage: 'Frecuencia no soportada.',
-    };
+    return await scheduleReminderNotificationCore(reminder, adapter);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[scheduleReminderNotification] Fallo al programar recordatorio ${reminder.id}:`, message);
     return {
       success: false,
       error: 'SCHEDULE_FAILED',
@@ -485,37 +265,13 @@ export async function getNextMonthlyTriggerDate(
 }
 
 /**
- * Cancela todas las notificaciones asociadas a un recordatorio,
- * aceptando el recordatorio completo, una lista de IDs o un ID individual.
+ * Cancela todas las notificaciones asociadas a un recordatorio de forma segura.
  */
 export async function cancelReminderNotifications(
-  target?: Reminder | { notificationIds?: string[]; notificationId?: string } | string[] | string
+  target?: Reminder | { notificationIds?: string[]; notificationId?: string } | string[] | string,
+  adapter: NotificationAdapter = defaultExpoAdapter
 ): Promise<boolean> {
-  if (!target) {
-    return false;
-  }
-
-  let idsToCancel: string[] = [];
-  if (typeof target === 'string') {
-    idsToCancel = [target];
-  } else if (Array.isArray(target)) {
-    idsToCancel = target.filter(Boolean);
-  } else {
-    idsToCancel = getReminderNotificationIds(target as Reminder);
-  }
-
-  if (idsToCancel.length === 0) {
-    return false;
-  }
-
-  let anyCancelled = false;
-  for (const id of idsToCancel) {
-    const success = await cancelNotification(id);
-    if (success) {
-      anyCancelled = true;
-    }
-  }
-  return anyCancelled;
+  return await cancelReminderNotificationsCore(target, adapter);
 }
 
 /**
@@ -529,183 +285,17 @@ export async function cancelReminderNotification(notificationId?: string): Promi
 }
 
 /**
- * Sincroniza los recordatorios almacenados con las notificaciones actualmente
- * programadas en el sistema. Asegura que los recordatorios activos tengan
- * todas sus notificaciones creadas, repone el horizonte de 24 meses para días
- * 29-31 sin generar duplicados, y elimina notificaciones de recordatorios inactivos.
+ * Sincroniza los recordatorios almacenados con las notificaciones actualmente programadas en el sistema.
  */
-export async function reconcileScheduledNotifications(reminders: Reminder[]): Promise<Reminder[]> {
-  try {
-    const scheduled = await getAllScheduledNotifications();
-    const activeScheduledIds = new Set(scheduled.map((s) => s.identifier));
-
-    const updatedReminders: Reminder[] = [];
-
-    for (const reminder of reminders) {
-      const isSupportedType =
-        reminder.repeatType === 'once' ||
-        reminder.repeatType === 'daily' ||
-        reminder.repeatType === 'weekly' ||
-        reminder.repeatType === 'monthly';
-
-      const currentIds = getReminderNotificationIds(reminder);
-
-      if (reminder.isActive && isSupportedType) {
-        // --- CASO MENSUAL (DÍAS VARIABLES 29, 30 y 31) ---
-        if (reminder.repeatType === 'monthly' && (reminder.dayOfMonth ?? 15) >= 29) {
-          const dayOfMonth = reminder.dayOfMonth ?? 31;
-          const targetOccurrences = calculateMonthlyOccurrences(dayOfMonth, reminder.time, 24);
-
-          // Buscar notificaciones activas en el sistema pertenecientes a este recordatorio
-          const reminderNotifications = scheduled.filter(
-            (s) =>
-              activeScheduledIds.has(s.identifier) &&
-              (s.content.data?.reminderId === reminder.id || currentIds.includes(s.identifier))
-          );
-
-          // Mapa de fechas ISO ya programadas -> identifier
-          const scheduledIsoDates = new Map<string, string>();
-          for (const notif of reminderNotifications) {
-            const dataIso = notif.content.data?.targetDateIso as string | undefined;
-            if (dataIso) {
-              scheduledIsoDates.set(dataIso, notif.identifier);
-            }
-          }
-
-          const validIds: string[] = [];
-
-          // Para cada una de las 24 fechas requeridas
-          for (const occurrence of targetOccurrences) {
-            const iso = occurrence.toISOString().slice(0, 10);
-            const existingId = scheduledIsoDates.get(iso);
-
-            if (existingId) {
-              // Ya existe y sigue vigente: conservarla sin reprogramar
-              validIds.push(existingId);
-            } else {
-              // Falta en el horizonte: reponerla programando una nueva
-              try {
-                const newId = await Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: reminder.title,
-                    body: `Recordatorio mensual (${occurrence.getDate()} de ${MONTH_NAMES_SPANISH[occurrence.getMonth()]}) a las ${reminder.time}`,
-                    data: {
-                      reminderId: reminder.id,
-                      repeatType: 'monthly',
-                      dayOfMonth,
-                      targetDateIso: iso,
-                      mode: 'calculated_date_horizon',
-                    },
-                  },
-                  trigger: {
-                    type: SchedulableTriggerInputTypes.DATE,
-                    date: occurrence,
-                    channelId: ANDROID_CHANNEL_ID,
-                    delivery: 'alarmClock',
-                  },
-                });
-                validIds.push(newId);
-              } catch (err) {
-                console.warn(`[reconcileScheduledNotifications] Error programando fecha ${iso}:`, err);
-              }
-            }
-          }
-
-          // Cancelar notificaciones de este recordatorio que no correspondan a las fechas válidas del horizonte
-          for (const notif of reminderNotifications) {
-            if (!validIds.includes(notif.identifier)) {
-              await cancelNotification(notif.identifier);
-            }
-          }
-
-          updatedReminders.push({
-            ...reminder,
-            notificationId: validIds[0],
-            notificationIds: validIds,
-          });
-          continue;
-        }
-
-        // --- CASOS: ONCE, DAILY, WEEKLY Y MONTHLY (1-28) ---
-        let needsReschedule = false;
-
-        if (
-          reminder.repeatType === 'once' ||
-          reminder.repeatType === 'daily' ||
-          (reminder.repeatType === 'monthly' && (reminder.dayOfMonth ?? 15) <= 28)
-        ) {
-          // Requiere exactamente 1 ID y que exista en el sistema
-          if (currentIds.length !== 1 || !activeScheduledIds.has(currentIds[0])) {
-            needsReschedule = true;
-          }
-        } else if (reminder.repeatType === 'weekly') {
-          // Requiere tantos IDs como días seleccionados y que todos existan en el sistema
-          const expectedDaysCount = reminder.days?.length ?? 0;
-          if (expectedDaysCount === 0) {
-            needsReschedule = false;
-          } else if (
-            currentIds.length !== expectedDaysCount ||
-            !currentIds.every((id) => activeScheduledIds.has(id))
-          ) {
-            needsReschedule = true;
-          }
-        }
-
-        if (needsReschedule) {
-          // Cancelar IDs desactualizados o incompletos antes de reprogramar
-          for (const id of currentIds) {
-            if (activeScheduledIds.has(id)) {
-              await cancelNotification(id);
-            }
-          }
-
-          const res = await scheduleReminderNotification(reminder);
-          if (res.success && res.notificationIds && res.notificationIds.length > 0) {
-            updatedReminders.push({
-              ...reminder,
-              notificationId: res.notificationId,
-              notificationIds: res.notificationIds,
-            });
-          } else {
-            updatedReminders.push({
-              ...reminder,
-              notificationId: undefined,
-              notificationIds: undefined,
-            });
-          }
-        } else {
-          // Todo está sincronizado
-          updatedReminders.push(reminder);
-        }
-      } else {
-        // Inactivo o no soportado: cancelar cualquier notificación residual
-        if (currentIds.length > 0) {
-          for (const id of currentIds) {
-            if (activeScheduledIds.has(id)) {
-              await cancelNotification(id);
-            }
-          }
-          updatedReminders.push({
-            ...reminder,
-            notificationId: undefined,
-            notificationIds: undefined,
-          });
-        } else {
-          updatedReminders.push(reminder);
-        }
-      }
-    }
-
-    return updatedReminders;
-  } catch (err) {
-    console.warn('[reconcileScheduledNotifications] Error durante la reconciliación:', err);
-    return reminders;
-  }
+export async function reconcileScheduledNotifications(
+  reminders: Reminder[],
+  adapter: NotificationAdapter = defaultExpoAdapter
+): Promise<Reminder[]> {
+  return await reconcileScheduledNotificationsCore(reminders, adapter);
 }
 
 /**
  * Obtiene un resumen estructurado de las notificaciones actualmente programadas.
- * Útil para depuración y verificación.
  */
 export async function getScheduledNotificationsReport(): Promise<
   { id: string; title: string; trigger: unknown }[]
