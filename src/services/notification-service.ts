@@ -1,6 +1,10 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { AndroidImportance, SchedulableTriggerInputTypes } from 'expo-notifications';
+import {
+  AndroidImportance,
+  AndroidNotificationVisibility,
+  SchedulableTriggerInputTypes,
+} from 'expo-notifications';
 
 import { Reminder } from '@/types/reminder';
 import {
@@ -58,6 +62,7 @@ export async function setupNotificationChannel(): Promise<void> {
         importance: AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#2563EB',
+        lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
       });
     } catch (channelError) {
       console.warn('Advertencia al configurar el canal de notificaciones:', channelError);
@@ -136,7 +141,7 @@ export async function scheduleTestNotification(
       };
     }
 
-    // 3. Programar la notificación local
+    // 3. Programar la notificación local con entrega tipo alarmClock para despertar el dispositivo en reposo
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Recordatorio de prueba',
@@ -147,10 +152,10 @@ export async function scheduleTestNotification(
         },
       },
       trigger: {
-        type: SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds,
-        repeats: false,
+        type: SchedulableTriggerInputTypes.DATE,
+        date: new Date(Date.now() + seconds * 1000),
         channelId: ANDROID_CHANNEL_ID,
+        delivery: 'alarmClock',
       },
     });
 
@@ -258,6 +263,7 @@ export async function scheduleReminderNotification(
           type: SchedulableTriggerInputTypes.DATE,
           date: targetDate,
           channelId: ANDROID_CHANNEL_ID,
+          delivery: 'alarmClock',
         },
       });
 
@@ -285,6 +291,7 @@ export async function scheduleReminderNotification(
           hour: parsedTime.getHours(),
           minute: parsedTime.getMinutes(),
           channelId: ANDROID_CHANNEL_ID,
+          delivery: 'alarmClock',
         },
       });
 
@@ -334,6 +341,7 @@ export async function scheduleReminderNotification(
             hour,
             minute,
             channelId: ANDROID_CHANNEL_ID,
+            delivery: 'alarmClock',
           },
         });
 
@@ -381,6 +389,7 @@ export async function scheduleReminderNotification(
             hour,
             minute,
             channelId: ANDROID_CHANNEL_ID,
+            delivery: 'alarmClock',
           },
         });
 
@@ -420,6 +429,7 @@ export async function scheduleReminderNotification(
             type: SchedulableTriggerInputTypes.DATE,
             date: occurrence,
             channelId: ANDROID_CHANNEL_ID,
+            delivery: 'alarmClock',
           },
         });
         scheduledIds.push(notificationId);
@@ -464,6 +474,7 @@ export async function getNextMonthlyTriggerDate(
       hour: parsedTime.getHours(),
       minute: parsedTime.getMinutes(),
       channelId: ANDROID_CHANNEL_ID,
+      delivery: 'alarmClock',
     };
     const nextTimestamp = await Notifications.getNextTriggerDateAsync(trigger);
     return nextTimestamp ? new Date(nextTimestamp) : null;
@@ -590,6 +601,7 @@ export async function reconcileScheduledNotifications(reminders: Reminder[]): Pr
                     type: SchedulableTriggerInputTypes.DATE,
                     date: occurrence,
                     channelId: ANDROID_CHANNEL_ID,
+                    delivery: 'alarmClock',
                   },
                 });
                 validIds.push(newId);
