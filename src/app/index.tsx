@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,15 +11,19 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ProfileHeader } from '@/components/profile/profile-header';
 import { ConfirmDeleteModal } from '@/components/reminders/confirm-delete-modal';
 import { CreateReminderModal } from '@/components/reminders/create-reminder-modal';
 import { ReminderCard } from '@/components/reminders/reminder-card';
 import { TestNotificationCard } from '@/components/reminders/test-notification-card';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useProfile } from '@/hooks/use-profile';
 import { useReminders } from '@/hooks/use-reminders';
 import { Reminder } from '@/types/reminder';
 
 export default function RemindersScreen() {
+  const router = useRouter();
+  const { profile } = useProfile();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
 
@@ -82,18 +87,28 @@ export default function RemindersScreen() {
     setReminderToDelete(null);
   };
 
+  const handleOpenSettings = () => {
+    router.push('/settings');
+  };
+
   return (
     <SafeAreaView
       edges={['top', 'left', 'right']}
       style={[styles.safeArea, isDark ? styles.safeAreaDark : styles.safeAreaLight]}>
       <View style={styles.contentWrapper}>
-        {/* Cabecera principal */}
+        {/* Cabecera de perfil */}
+        <ProfileHeader
+          name={profile.name}
+          onPressSettings={handleOpenSettings}
+        />
+
+        {/* Cabecera de la sección de recordatorios */}
         <View style={styles.header}>
           <View style={styles.titleColumn}>
             <Text
               numberOfLines={1}
               style={[styles.headerTitle, isDark ? styles.titleDark : styles.titleLight]}>
-              Remind
+              Mis recordatorios
             </Text>
           </View>
 
