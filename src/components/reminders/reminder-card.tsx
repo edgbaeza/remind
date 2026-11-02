@@ -14,7 +14,7 @@ interface ReminderCardProps {
   reminder: Reminder;
   onPress: (reminder: Reminder) => void;
   onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (reminder: Reminder) => void;
 }
 
 const CATEGORY_CONFIG: Record<
@@ -115,7 +115,7 @@ export function ReminderCard({ reminder, onPress, onToggle, onDelete }: Reminder
             hitSlop={10}
             onPress={(e) => {
               e.stopPropagation();
-              onDelete(reminder.id);
+              onDelete(reminder);
             }}
             style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}>
             <Text style={[styles.deleteBtnText, isDark && styles.deleteBtnTextDark]}>✕</Text>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ConfirmDeleteModal } from '@/components/reminders/confirm-delete-modal';
 import { CreateReminderModal } from '@/components/reminders/create-reminder-modal';
 import { ReminderCard } from '@/components/reminders/reminder-card';
 import { TestNotificationCard } from '@/components/reminders/test-notification-card';
@@ -32,6 +33,8 @@ export default function RemindersScreen() {
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [reminderToEdit, setReminderToEdit] = useState<Reminder | null>(null);
+  const [reminderToDelete, setReminderToDelete] = useState<Reminder | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const activeCount = reminders.filter((r) => r.isActive).length;
   const bottomInset = Math.max(insets.bottom, 16);
@@ -59,6 +62,26 @@ export default function RemindersScreen() {
     setReminderToEdit(null);
   };
 
+  const handleRequestDelete = (reminder: Reminder) => {
+    setReminderToDelete(reminder);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!reminderToDelete || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await deleteReminder(reminderToDelete.id);
+      setReminderToDelete(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    if (isDeleting) return;
+    setReminderToDelete(null);
+  };
+
   return (
     <SafeAreaView
       edges={['top', 'left', 'right']}
@@ -67,13 +90,10 @@ export default function RemindersScreen() {
         {/* Cabecera principal */}
         <View style={styles.header}>
           <View style={styles.titleColumn}>
-            <Text style={[styles.headerSubtitle, isDark ? styles.subtitleDark : styles.subtitleLight]}>
-              Organiza tu día
-            </Text>
             <Text
               numberOfLines={1}
               style={[styles.headerTitle, isDark ? styles.titleDark : styles.titleLight]}>
-              Mis recordatorios
+              Remind
             </Text>
           </View>
 
@@ -95,7 +115,7 @@ export default function RemindersScreen() {
               reminder={item}
               onPress={handleOpenEdit}
               onToggle={toggleReminder}
-              onDelete={deleteReminder}
+              onDelete={handleRequestDelete}
             />
           )}
           contentContainerStyle={[
@@ -142,6 +162,15 @@ export default function RemindersScreen() {
           reminderToEdit={reminderToEdit}
           onClose={handleCloseModal}
           onSave={handleSaveReminder}
+        />
+
+        {/* Modal personalizado de confirmación de eliminación */}
+        <ConfirmDeleteModal
+          visible={reminderToDelete !== null}
+          reminderTitle={reminderToDelete?.title ?? ''}
+          isDeleting={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
         />
       </View>
     </SafeAreaView>
