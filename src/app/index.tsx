@@ -1,3 +1,5 @@
+import '@/utils/expo-application-shim';
+
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
