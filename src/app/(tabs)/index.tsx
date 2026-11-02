@@ -9,7 +9,7 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileHeader } from '@/components/profile/profile-header';
 import { ConfirmDeleteModal } from '@/components/reminders/confirm-delete-modal';
@@ -26,7 +26,6 @@ export default function RemindersScreen() {
   const router = useRouter();
   const { profile } = useProfile();
   const isDark = useColorScheme() === 'dark';
-  const insets = useSafeAreaInsets();
   const { todayDate } = useTodayDate();
 
   const {
@@ -61,7 +60,6 @@ export default function RemindersScreen() {
 
   const displayedReminders = activeFilter === 'today' ? todayReminders : upcomingReminders;
   const activeCount = displayedReminders.filter((r) => r.isActive).length;
-  const bottomInset = Math.max(insets.bottom, 16);
 
   const handleOpenCreate = () => {
     setReminderToEdit(null);
@@ -210,10 +208,7 @@ export default function RemindersScreen() {
               onDelete={handleRequestDelete}
             />
           )}
-          contentContainerStyle={[
-            styles.listContainer,
-            { paddingBottom: bottomInset + 80 },
-          ]}
+          contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             isLoading ? (
@@ -243,10 +238,11 @@ export default function RemindersScreen() {
           }
         />
 
-        {/* Botón Flotante para crear nuevo recordatorio */}
-        <View style={[styles.fabContainer, { bottom: bottomInset + 8 }]}>
+        {/* Botón Flotante para crear nuevo recordatorio (situado sobre la barra inferior) */}
+        <View style={styles.fabContainer}>
           <Pressable
             accessibilityLabel="Crear nuevo recordatorio"
+            accessibilityRole="button"
             onPress={handleOpenCreate}
             style={({ pressed }) => [styles.fabButton, pressed && styles.fabButtonPressed]}>
             <Text style={styles.fabIcon}>＋</Text>
@@ -397,6 +393,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingTop: 4,
+    paddingBottom: 92,
   },
   loadingContainer: {
     paddingVertical: 60,
@@ -426,6 +423,7 @@ const styles = StyleSheet.create({
   },
   fabContainer: {
     position: 'absolute',
+    bottom: 16,
     right: 16,
     alignItems: 'center',
   },
