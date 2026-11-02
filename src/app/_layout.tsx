@@ -20,6 +20,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ headerShown: false }} />
+          <Stack.Screen name="diagnostics" options={{ headerShown: false }} />
         </Stack>
       </ProfileProvider>
     </ThemeProvider>

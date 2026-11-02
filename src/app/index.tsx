@@ -15,7 +15,6 @@ import { ProfileHeader } from '@/components/profile/profile-header';
 import { ConfirmDeleteModal } from '@/components/reminders/confirm-delete-modal';
 import { CreateReminderModal } from '@/components/reminders/create-reminder-modal';
 import { ReminderCard } from '@/components/reminders/reminder-card';
-import { TestNotificationCard } from '@/components/reminders/test-notification-card';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useProfile } from '@/hooks/use-profile';
 import { useReminders } from '@/hooks/use-reminders';
@@ -203,7 +202,6 @@ export default function RemindersScreen() {
         <FlatList
           data={displayedReminders}
           keyExtractor={(item) => item.id}
-          ListHeaderComponent={<TestNotificationCard />}
           renderItem={({ item }) => (
             <ReminderCard
               reminder={item}

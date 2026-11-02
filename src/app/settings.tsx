@@ -325,6 +325,55 @@ export default function SettingsScreen() {
               )}
             </Pressable>
           </View>
+
+          {/* Encabezado de la sección Herramientas */}
+          <View style={[styles.sectionHeader, styles.toolsSectionHeader]}>
+            <Text style={styles.sectionSubtitle}>HERRAMIENTAS</Text>
+          </View>
+
+          {/* Opción: Diagnósticos de notificaciones */}
+          <Pressable
+            accessibilityHint="Abre la pantalla de pruebas y revisión de notificaciones"
+            accessibilityLabel="Diagnósticos de notificaciones. Pruebas y revisión de notificaciones programadas"
+            accessibilityRole="button"
+            onPress={() => router.push('/diagnostics')}
+            style={({ pressed }) => [
+              styles.toolRowCard,
+              pressed && styles.toolRowCardPressed,
+            ]}>
+            <View style={styles.toolIconContainer}>
+              <SymbolView
+                fallback={<Text style={styles.fallbackToolIcon}>🔔</Text>}
+                name={{
+                  ios: 'bell.badge',
+                  android: 'notifications_active',
+                  web: 'notifications_active',
+                }}
+                size={22}
+                tintColor="#60A5FA"
+              />
+            </View>
+
+            <View style={styles.toolTextColumn}>
+              <Text style={styles.toolTitle}>Diagnósticos de notificaciones</Text>
+              <Text style={styles.toolDescription}>
+                Pruebas y revisión de notificaciones programadas
+              </Text>
+            </View>
+
+            <View style={styles.toolChevronContainer}>
+              <SymbolView
+                fallback={<Text style={styles.toolChevronFallback}>›</Text>}
+                name={{
+                  ios: 'chevron.right',
+                  android: 'chevron_right',
+                  web: 'chevron_right',
+                }}
+                size={20}
+                tintColor="#64748B"
+              />
+            </View>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -385,6 +434,9 @@ const styles = StyleSheet.create({
   sectionHeader: {
     marginBottom: 8,
     paddingHorizontal: 4,
+  },
+  toolsSectionHeader: {
+    marginTop: 24,
   },
   sectionSubtitle: {
     fontSize: 12,
@@ -547,5 +599,58 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  toolRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111317',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#1E2433',
+    minHeight: 72,
+    gap: 14,
+  },
+  toolRowCardPressed: {
+    opacity: 0.8,
+    backgroundColor: '#161922',
+  },
+  toolIconContainer: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#182235',
+    borderWidth: 1,
+    borderColor: '#253552',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fallbackToolIcon: {
+    fontSize: 18,
+  },
+  toolTextColumn: {
+    flex: 1,
+    gap: 3,
+  },
+  toolTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#F8FAFC',
+  },
+  toolDescription: {
+    fontSize: 13,
+    color: '#94A3B8',
+    lineHeight: 18,
+  },
+  toolChevronContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 4,
+  },
+  toolChevronFallback: {
+    fontSize: 24,
+    color: '#64748B',
+    fontWeight: '400',
   },
 });
