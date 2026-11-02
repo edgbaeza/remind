@@ -1,5 +1,3 @@
-import '@/utils/expo-application-shim';
-
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import {
