@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
+import {
+  type RemindersContextValue,
+  useRemindersContext,
+} from '@/context/reminders-context-core';
 import {
   cancelReminderNotifications,
   reconcileScheduledNotifications,
@@ -13,7 +17,14 @@ import {
 } from '@/services/reminder-storage';
 import { Reminder } from '@/types/reminder';
 
-export function useReminders() {
+export type { RemindersContextValue };
+
+/**
+ * Hook controlador interno que gestiona la única instancia del estado de recordatorios,
+ * la carga inicial, la reconciliación de notificaciones y la cola secuencial de persistencia.
+ * Solo debe ser invocado por RemindersProvider.
+ */
+export function useRemindersController(): RemindersContextValue {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -342,12 +353,22 @@ export function useReminders() {
     [isLoading]
   );
 
-  return {
-    reminders,
-    isLoading,
-    addReminder,
-    updateReminder,
-    toggleReminder,
-    deleteReminder,
-  };
+  return useMemo(
+    () => ({
+      reminders,
+      isLoading,
+      addReminder,
+      updateReminder,
+      toggleReminder,
+      deleteReminder,
+    }),
+    [reminders, isLoading, addReminder, updateReminder, toggleReminder, deleteReminder]
+  );
+}
+
+/**
+ * Interfaz pública para consumir el estado compartido de recordatorios desde cualquier pantalla.
+ */
+export function useReminders(): RemindersContextValue {
+  return useRemindersContext();
 }
