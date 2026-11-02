@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -9,10 +10,22 @@ import {
 
 export interface ProfileHeaderProps {
   name: string;
+  avatarType?: 'default' | 'custom';
+  avatarUri?: string;
   onPressSettings: () => void;
 }
 
-export function ProfileHeader({ name, onPressSettings }: ProfileHeaderProps) {
+export function ProfileHeader({
+  name,
+  avatarType = 'default',
+  avatarUri,
+  onPressSettings,
+}: ProfileHeaderProps) {
+  const [hasImageError, setHasImageError] = useState(false);
+
+  const shouldShowCustomPhoto =
+    avatarType === 'custom' && Boolean(avatarUri) && !hasImageError;
+
   return (
     <View style={styles.container}>
       {/* Sección Izquierda: Avatar y Nombre */}
@@ -21,16 +34,27 @@ export function ProfileHeader({ name, onPressSettings }: ProfileHeaderProps) {
           accessibilityLabel="Avatar de usuario"
           accessibilityRole="image"
           style={styles.avatarContainer}>
-          <SymbolView
-            fallback={<Text style={styles.fallbackIcon}>👤</Text>}
-            name={{
-              ios: 'person',
-              android: 'person_outline',
-              web: 'person_outline',
-            }}
-            size={24}
-            tintColor="#CBD5E1"
-          />
+          {shouldShowCustomPhoto ? (
+            <Image
+              accessibilityLabel="Fotografía del perfil"
+              contentFit="cover"
+              onError={() => setHasImageError(true)}
+              source={{ uri: avatarUri }}
+              style={styles.avatarImage}
+              transition={150}
+            />
+          ) : (
+            <SymbolView
+              fallback={<Text style={styles.fallbackIcon}>👤</Text>}
+              name={{
+                ios: 'person',
+                android: 'person_outline',
+                web: 'person_outline',
+              }}
+              size={24}
+              tintColor="#CBD5E1"
+            />
+          )}
         </View>
 
         <View style={styles.nameWrapper}>
@@ -113,6 +137,11 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   nameWrapper: {
     flex: 1,

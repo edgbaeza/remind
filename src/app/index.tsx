@@ -98,6 +98,8 @@ export default function RemindersScreen() {
       <View style={styles.contentWrapper}>
         {/* Cabecera de perfil */}
         <ProfileHeader
+          avatarType={profile.avatarType}
+          avatarUri={profile.avatarUri}
           name={profile.name}
           onPressSettings={handleOpenSettings}
         />

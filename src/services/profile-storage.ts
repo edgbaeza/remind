@@ -76,9 +76,17 @@ export async function getStoredProfile(
       ? parsed.name.trim()
       : DEFAULT_PROFILE.name;
 
+    const avatarType: 'default' | 'custom' =
+      parsed.avatarType === 'custom' && typeof parsed.avatarUri === 'string' && parsed.avatarUri.trim().length > 0
+        ? 'custom'
+        : 'default';
+
+    const avatarUri = avatarType === 'custom' ? parsed.avatarUri.trim() : undefined;
+
     return {
       name,
-      avatarType: 'default',
+      avatarType,
+      avatarUri,
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : undefined,
     };
   } catch (err) {
@@ -87,19 +95,56 @@ export async function getStoredProfile(
   }
 }
 
+export interface SaveProfileInput {
+  name?: string;
+  avatarType?: 'default' | 'custom';
+  avatarUri?: string | null;
+}
+
 /**
  * Guarda los datos del perfil localmente en AsyncStorage.
- * Valida que el nombre no esté vacío.
+ * Permite actualizar selectivamente el nombre, el tipo de avatar y la URI de la fotografía.
  */
 export async function saveStoredProfile(
-  profileData: { name: string },
+  profileData: SaveProfileInput,
   adapter: ProfileStorageAdapter = defaultAdapter
 ): Promise<UserProfile> {
-  const sanitizedName = sanitizeProfileName(profileData.name);
+  let currentProfile: UserProfile = { ...DEFAULT_PROFILE };
+  try {
+    currentProfile = await getStoredProfile(adapter);
+  } catch {
+    // Si la lectura falla por almacenamiento vacío o inconsistente, se continúa con los valores base
+  }
+
+  let finalName = currentProfile.name;
+  if (profileData.name !== undefined) {
+    finalName = sanitizeProfileName(profileData.name);
+  }
+
+  let finalAvatarType: 'default' | 'custom' = currentProfile.avatarType;
+  let finalAvatarUri: string | undefined = currentProfile.avatarUri;
+
+  if (profileData.avatarType !== undefined) {
+    finalAvatarType = profileData.avatarType;
+    if (finalAvatarType === 'default') {
+      finalAvatarUri = undefined;
+    }
+  }
+
+  if (profileData.avatarUri !== undefined) {
+    if (profileData.avatarUri && profileData.avatarUri.trim().length > 0) {
+      finalAvatarUri = profileData.avatarUri.trim();
+      finalAvatarType = 'custom';
+    } else {
+      finalAvatarUri = undefined;
+      finalAvatarType = 'default';
+    }
+  }
 
   const updatedProfile: UserProfile = {
-    name: sanitizedName,
-    avatarType: 'default',
+    name: finalName,
+    avatarType: finalAvatarType === 'custom' && finalAvatarUri ? 'custom' : 'default',
+    avatarUri: finalAvatarType === 'custom' && finalAvatarUri ? finalAvatarUri : undefined,
     updatedAt: new Date().toISOString(),
   };
 
@@ -110,4 +155,3 @@ export async function saveStoredProfile(
     throw new ProfileStorageError('Error al guardar el perfil en el almacenamiento local.', err);
   }
 }
-

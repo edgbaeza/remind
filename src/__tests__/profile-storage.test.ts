@@ -61,6 +61,8 @@ describe('Pruebas unitarias de Perfil de Usuario (profile-storage)', () => {
       const profile = await getStoredProfile(adapter);
       assert.deepEqual(profile, DEFAULT_PROFILE);
       assert.equal(profile.name, 'Mi perfil');
+      assert.equal(profile.avatarType, 'default');
+      assert.equal(profile.avatarUri, undefined);
     });
 
     it('Lanza ProfileStorageError si hay fallo de lectura de hardware', async () => {
@@ -83,7 +85,7 @@ describe('Pruebas unitarias de Perfil de Usuario (profile-storage)', () => {
       );
     });
 
-    it('Recupera perfil guardado correctamente', async () => {
+    it('Recupera perfil guardado con avatar predeterminado', async () => {
       const adapter = new MockStorageAdapter();
       await adapter.setItem(
         PROFILE_STORAGE_KEY,
@@ -93,10 +95,44 @@ describe('Pruebas unitarias de Perfil de Usuario (profile-storage)', () => {
       const profile = await getStoredProfile(adapter);
       assert.equal(profile.name, 'Elena Gómez');
       assert.equal(profile.avatarType, 'default');
+      assert.equal(profile.avatarUri, undefined);
+    });
+
+    it('Recupera perfil guardado con foto personalizada', async () => {
+      const adapter = new MockStorageAdapter();
+      await adapter.setItem(
+        PROFILE_STORAGE_KEY,
+        JSON.stringify({
+          name: 'Elena Gómez',
+          avatarType: 'custom',
+          avatarUri: 'file:///data/user/0/com.remind.app/files/profile-photos/my-photo.jpg',
+        })
+      );
+
+      const profile = await getStoredProfile(adapter);
+      assert.equal(profile.name, 'Elena Gómez');
+      assert.equal(profile.avatarType, 'custom');
+      assert.equal(
+        profile.avatarUri,
+        'file:///data/user/0/com.remind.app/files/profile-photos/my-photo.jpg'
+      );
+    });
+
+    it('Degrada de forma segura a default si avatarType es custom pero falta avatarUri', async () => {
+      const adapter = new MockStorageAdapter();
+      await adapter.setItem(
+        PROFILE_STORAGE_KEY,
+        JSON.stringify({ name: 'Carlos', avatarType: 'custom', avatarUri: '' })
+      );
+
+      const profile = await getStoredProfile(adapter);
+      assert.equal(profile.name, 'Carlos');
+      assert.equal(profile.avatarType, 'default');
+      assert.equal(profile.avatarUri, undefined);
     });
   });
 
-  describe('3. Escritura de perfil (saveStoredProfile)', () => {
+  describe('3. Escritura y actualización de perfil (saveStoredProfile)', () => {
     it('Guarda el nombre sanitizado en almacenamiento', async () => {
       const adapter = new MockStorageAdapter();
       const saved = await saveStoredProfile({ name: '  Roberto  ' }, adapter);
@@ -117,6 +153,62 @@ describe('Pruebas unitarias de Perfil de Usuario (profile-storage)', () => {
 
       const retrieved = await getStoredProfile(adapter);
       assert.equal(retrieved.name, DEFAULT_PROFILE.name);
+    });
+
+    it('Guarda fotografía de perfil personalizada conservando el nombre existente', async () => {
+      const adapter = new MockStorageAdapter();
+      await saveStoredProfile({ name: 'Sofía' }, adapter);
+
+      const photoUri = 'file:///data/user/0/com.remind.app/files/profile-photos/profile_123.jpg';
+      const updated = await saveStoredProfile(
+        { avatarType: 'custom', avatarUri: photoUri },
+        adapter
+      );
+
+      assert.equal(updated.name, 'Sofía');
+      assert.equal(updated.avatarType, 'custom');
+      assert.equal(updated.avatarUri, photoUri);
+
+      const retrieved = await getStoredProfile(adapter);
+      assert.equal(retrieved.name, 'Sofía');
+      assert.equal(retrieved.avatarType, 'custom');
+      assert.equal(retrieved.avatarUri, photoUri);
+    });
+
+    it('Actualiza nombre sin alterar la fotografía personalizada existente', async () => {
+      const adapter = new MockStorageAdapter();
+      const photoUri = 'file:///data/user/0/com.remind.app/files/profile-photos/profile_123.jpg';
+      await saveStoredProfile(
+        { name: 'Sofía', avatarType: 'custom', avatarUri: photoUri },
+        adapter
+      );
+
+      const updated = await saveStoredProfile({ name: 'Sofía Martínez' }, adapter);
+      assert.equal(updated.name, 'Sofía Martínez');
+      assert.equal(updated.avatarType, 'custom');
+      assert.equal(updated.avatarUri, photoUri);
+    });
+
+    it('Restaura avatar predeterminado limpiando la referencia de URI', async () => {
+      const adapter = new MockStorageAdapter();
+      const photoUri = 'file:///data/user/0/com.remind.app/files/profile-photos/profile_123.jpg';
+      await saveStoredProfile(
+        { name: 'Diego', avatarType: 'custom', avatarUri: photoUri },
+        adapter
+      );
+
+      const restored = await saveStoredProfile(
+        { avatarType: 'default', avatarUri: null },
+        adapter
+      );
+
+      assert.equal(restored.name, 'Diego');
+      assert.equal(restored.avatarType, 'default');
+      assert.equal(restored.avatarUri, undefined);
+
+      const retrieved = await getStoredProfile(adapter);
+      assert.equal(retrieved.avatarType, 'default');
+      assert.equal(retrieved.avatarUri, undefined);
     });
 
     it('Lanza ProfileStorageError si falla la escritura', async () => {

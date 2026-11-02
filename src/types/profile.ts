@@ -1,6 +1,6 @@
 export interface UserProfile {
   name: string;
-  avatarType: 'default';
+  avatarType: 'default' | 'custom';
+  avatarUri?: string;
   updatedAt?: string;
 }
-

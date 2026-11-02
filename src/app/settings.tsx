@@ -1,3 +1,5 @@
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
@@ -19,13 +21,23 @@ import { useProfile } from '@/hooks/use-profile';
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, updateName, isLoading } = useProfile();
+  const {
+    profile,
+    updateName,
+    updateAvatarPhoto,
+    restoreDefaultAvatar,
+    isLoading,
+  } = useProfile();
 
   const [prevProfileName, setPrevProfileName] = useState(profile.name);
   const [nameInput, setNameInput] = useState(profile.name);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const [isPickingPhoto, setIsPickingPhoto] = useState(false);
+  const [photoFeedback, setPhotoFeedback] = useState<string | null>(null);
+  const [hasImageError, setHasImageError] = useState(false);
 
   // Sincronizar input si el perfil externo cambia (patrón oficial de React para ajustar estado derivado)
   if (profile.name !== prevProfileName) {
@@ -59,11 +71,69 @@ export default function SettingsScreen() {
     }
   };
 
+  const handlePickPhoto = async () => {
+    if (isPickingPhoto) return;
+    setIsPickingPhoto(true);
+    setErrorMessage(null);
+    setPhotoFeedback(null);
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedUri = result.assets[0].uri;
+        const res = await updateAvatarPhoto(selectedUri);
+        if (res.success) {
+          setHasImageError(false);
+          setPhotoFeedback('✓ Fotografía actualizada correctamente');
+          setTimeout(() => setPhotoFeedback(null), 3000);
+        } else {
+          setErrorMessage(res.error ?? 'No fue posible guardar la fotografía.');
+        }
+      }
+    } catch (err) {
+      console.error('[Settings] Error al seleccionar imagen:', err);
+      setErrorMessage('No fue posible abrir la galería del dispositivo.');
+    } finally {
+      setIsPickingPhoto(false);
+    }
+  };
+
+  const handleRestoreDefault = async () => {
+    if (isPickingPhoto) return;
+    setIsPickingPhoto(true);
+    setErrorMessage(null);
+    setPhotoFeedback(null);
+
+    try {
+      const res = await restoreDefaultAvatar();
+      if (res.success) {
+        setHasImageError(false);
+        setPhotoFeedback('✓ Avatar predeterminado restaurado');
+        setTimeout(() => setPhotoFeedback(null), 3000);
+      } else {
+        setErrorMessage(res.error ?? 'No fue posible restaurar el avatar.');
+      }
+    } catch {
+      setErrorMessage('Ocurrió un error al restaurar el avatar predeterminado.');
+    } finally {
+      setIsPickingPhoto(false);
+    }
+  };
+
   const isSaveDisabled =
     isSaving ||
     isLoading ||
     nameInput.trim().length === 0 ||
     nameInput.trim() === profile.name;
+
+  const hasCustomPhoto =
+    profile.avatarType === 'custom' && Boolean(profile.avatarUri) && !hasImageError;
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
@@ -103,25 +173,92 @@ export default function SettingsScreen() {
 
           {/* Tarjeta de configuración de Perfil */}
           <View style={styles.card}>
-            {/* Visualización del Avatar Predeterminado */}
+            {/* Visualización y Edición del Avatar */}
             <View style={styles.avatarSection}>
-              <View
-                accessibilityLabel="Avatar circular predeterminado"
-                accessibilityRole="image"
-                style={styles.avatarLarge}>
-                <SymbolView
-                  fallback={<Text style={styles.fallbackAvatarIcon}>👤</Text>}
-                  name={{
-                    ios: 'person',
-                    android: 'person_outline',
-                    web: 'person_outline',
-                  }}
-                  size={36}
-                  tintColor="#CBD5E1"
-                />
+              <Pressable
+                accessibilityHint="Toca para seleccionar una fotografía desde tu galería"
+                accessibilityLabel="Fotografía de perfil. Toca para cambiarla."
+                accessibilityRole="button"
+                disabled={isPickingPhoto}
+                onPress={handlePickPhoto}
+                style={({ pressed }) => [
+                  styles.avatarLarge,
+                  pressed && styles.avatarLargePressed,
+                ]}>
+                {hasCustomPhoto ? (
+                  <Image
+                    accessibilityLabel="Foto de perfil del usuario"
+                    contentFit="cover"
+                    onError={() => setHasImageError(true)}
+                    source={{ uri: profile.avatarUri }}
+                    style={styles.avatarLargeImage}
+                    transition={150}
+                  />
+                ) : (
+                  <SymbolView
+                    fallback={<Text style={styles.fallbackAvatarIcon}>👤</Text>}
+                    name={{
+                      ios: 'person',
+                      android: 'person_outline',
+                      web: 'person_outline',
+                    }}
+                    size={38}
+                    tintColor="#CBD5E1"
+                  />
+                )}
+
+                {isPickingPhoto && (
+                  <View style={styles.avatarLoadingOverlay}>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  </View>
+                )}
+              </Pressable>
+
+              {/* Botones de acción de fotografía */}
+              <View style={styles.photoActionsRow}>
+                <Pressable
+                  accessibilityHint="Abre la galería para cambiar tu foto de perfil"
+                  accessibilityLabel="Cambiar foto de perfil"
+                  accessibilityRole="button"
+                  disabled={isPickingPhoto}
+                  hitSlop={6}
+                  onPress={handlePickPhoto}
+                  style={({ pressed }) => [
+                    styles.photoActionButton,
+                    pressed && styles.photoActionButtonPressed,
+                  ]}>
+                  <Text style={styles.photoActionButtonText}>
+                    {hasCustomPhoto ? 'Cambiar foto' : 'Seleccionar foto'}
+                  </Text>
+                </Pressable>
+
+                {hasCustomPhoto && (
+                  <Pressable
+                    accessibilityHint="Elimina la fotografía y vuelve al icono de usuario predeterminado"
+                    accessibilityLabel="Restaurar avatar predeterminado"
+                    accessibilityRole="button"
+                    disabled={isPickingPhoto}
+                    hitSlop={6}
+                    onPress={handleRestoreDefault}
+                    style={({ pressed }) => [
+                      styles.photoActionButton,
+                      styles.photoActionDestructiveButton,
+                      pressed && styles.photoActionButtonPressed,
+                    ]}>
+                    <Text style={styles.photoActionDestructiveText}>
+                      Restaurar predeterminado
+                    </Text>
+                  </Pressable>
+                )}
               </View>
-              <Text style={styles.avatarCaption}>Avatar predeterminado</Text>
             </View>
+
+            {/* Mensaje de retroalimentación de fotografía */}
+            {photoFeedback ? (
+              <View style={styles.successBanner}>
+                <Text style={styles.successText}>{photoFeedback}</Text>
+              </View>
+            ) : null}
 
             {/* Campo de edición del Nombre */}
             <View style={styles.formGroup}>
@@ -147,7 +284,7 @@ export default function SettingsScreen() {
               </Text>
             </View>
 
-            {/* Mensajes de error o éxito */}
+            {/* Mensajes de error o éxito del nombre */}
             {errorMessage ? (
               <View style={styles.errorBanner}>
                 <Text style={styles.errorText}>{errorMessage}</Text>
@@ -160,9 +297,9 @@ export default function SettingsScreen() {
               </View>
             ) : null}
 
-            {/* Botón Guardar */}
+            {/* Botón Guardar Nombre */}
             <Pressable
-              accessibilityHint="Guarda los cambios realizados en el perfil"
+              accessibilityHint="Guarda los cambios realizados en el nombre"
               accessibilityLabel="Guardar nombre"
               accessibilityRole="button"
               disabled={isSaveDisabled}
@@ -264,27 +401,69 @@ const styles = StyleSheet.create({
   },
   avatarSection: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   avatarLarge: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#1E293B',
     borderWidth: 1.5,
     borderColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  avatarLargePressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.97 }],
+  },
+  avatarLargeImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarLoadingOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fallbackAvatarIcon: {
     fontSize: 32,
     color: '#CBD5E1',
   },
-  avatarCaption: {
+  photoActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  photoActionButton: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: '#1E2433',
+    borderWidth: 1,
+    borderColor: '#2D3748',
+  },
+  photoActionButtonPressed: {
+    opacity: 0.7,
+  },
+  photoActionButtonText: {
+    color: '#3B82F6',
     fontSize: 13,
-    color: '#94A3B8',
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  photoActionDestructiveButton: {
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  photoActionDestructiveText: {
+    color: '#F87171',
+    fontSize: 13,
+    fontWeight: '600',
   },
   formGroup: {
     marginBottom: 16,
