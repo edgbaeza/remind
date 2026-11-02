@@ -110,3 +110,4 @@ export async function saveStoredProfile(
     throw new ProfileStorageError('Error al guardar el perfil en el almacenamiento local.', err);
   }
 }
+

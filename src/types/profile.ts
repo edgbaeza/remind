@@ -3,3 +3,4 @@ export interface UserProfile {
   avatarType: 'default';
   updatedAt?: string;
 }
+

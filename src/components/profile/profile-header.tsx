@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import React from 'react';
 import {
   Pressable,
@@ -20,7 +21,16 @@ export function ProfileHeader({ name, onPressSettings }: ProfileHeaderProps) {
           accessibilityLabel="Avatar de usuario"
           accessibilityRole="image"
           style={styles.avatarContainer}>
-          <Text style={styles.avatarIcon}>👤</Text>
+          <SymbolView
+            fallback={<Text style={styles.fallbackIcon}>👤</Text>}
+            name={{
+              ios: 'person',
+              android: 'person_outline',
+              web: 'person_outline',
+            }}
+            size={24}
+            tintColor="#CBD5E1"
+          />
         </View>
 
         <View style={styles.nameWrapper}>
@@ -40,8 +50,17 @@ export function ProfileHeader({ name, onPressSettings }: ProfileHeaderProps) {
           accessibilityHint="Esta función estará disponible en próximas versiones"
           accessibilityLabel="Notificaciones (próximamente)"
           accessibilityState={{ disabled: true }}
-          style={[styles.actionButton, styles.bellButton]}>
-          <Text style={styles.bellIcon}>🔔</Text>
+          style={styles.iconButton}>
+          <SymbolView
+            fallback={<Text style={styles.fallbackIcon}>🔔</Text>}
+            name={{
+              ios: 'bell',
+              android: 'notifications_none',
+              web: 'notifications_none',
+            }}
+            size={24}
+            tintColor="#64748B"
+          />
         </View>
 
         {/* Engranaje: Acceso a Configuración */}
@@ -52,11 +71,19 @@ export function ProfileHeader({ name, onPressSettings }: ProfileHeaderProps) {
           hitSlop={8}
           onPress={onPressSettings}
           style={({ pressed }) => [
-            styles.actionButton,
-            styles.settingsButton,
-            pressed && styles.actionButtonPressed,
+            styles.iconButton,
+            pressed && styles.iconButtonPressed,
           ]}>
-          <Text style={styles.actionIcon}>⚙️</Text>
+          <SymbolView
+            fallback={<Text style={styles.fallbackIcon}>⚙</Text>}
+            name={{
+              ios: 'gearshape',
+              android: 'settings',
+              web: 'settings',
+            }}
+            size={24}
+            tintColor="#E5E7EB"
+          />
         </Pressable>
       </View>
     </View>
@@ -78,17 +105,14 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#1E293B',
     borderWidth: 1.5,
     borderColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarIcon: {
-    fontSize: 20,
   },
   nameWrapper: {
     flex: 1,
@@ -103,33 +127,21 @@ const styles = StyleSheet.create({
   actionsSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#181C24',
-    borderWidth: 1,
-    borderColor: '#262D3D',
+  iconButton: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
-  bellButton: {
+  iconButtonPressed: {
     opacity: 0.6,
-  },
-  settingsButton: {
-    backgroundColor: '#1E2433',
-  },
-  actionButtonPressed: {
-    opacity: 0.7,
-    backgroundColor: '#262E40',
     transform: [{ scale: 0.95 }],
   },
-  bellIcon: {
-    fontSize: 17,
-  },
-  actionIcon: {
-    fontSize: 18,
+  fallbackIcon: {
+    fontSize: 20,
+    color: '#CBD5E1',
   },
 });

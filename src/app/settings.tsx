@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -108,7 +109,16 @@ export default function SettingsScreen() {
                 accessibilityLabel="Avatar circular predeterminado"
                 accessibilityRole="image"
                 style={styles.avatarLarge}>
-                <Text style={styles.avatarLargeIcon}>👤</Text>
+                <SymbolView
+                  fallback={<Text style={styles.fallbackAvatarIcon}>👤</Text>}
+                  name={{
+                    ios: 'person',
+                    android: 'person_outline',
+                    web: 'person_outline',
+                  }}
+                  size={36}
+                  tintColor="#CBD5E1"
+                />
               </View>
               <Text style={styles.avatarCaption}>Avatar predeterminado</Text>
             </View>
@@ -261,14 +271,15 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     backgroundColor: '#1E293B',
-    borderWidth: 2,
-    borderColor: '#2563EB',
+    borderWidth: 1.5,
+    borderColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
   },
-  avatarLargeIcon: {
-    fontSize: 34,
+  fallbackAvatarIcon: {
+    fontSize: 32,
+    color: '#CBD5E1',
   },
   avatarCaption: {
     fontSize: 13,
