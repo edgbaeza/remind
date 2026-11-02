@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { Reminder, ReminderCategory } from '@/types/reminder';
+import { isPastOnceReminder } from '@/utils/reminder-dates';
 
 interface ReminderCardProps {
   reminder: Reminder;
@@ -66,6 +67,7 @@ const CATEGORY_CONFIG: Record<
 export function ReminderCard({ reminder, onPress, onToggle, onDelete }: ReminderCardProps) {
   const isDark = useColorScheme() === 'dark';
   const categoryInfo = CATEGORY_CONFIG[reminder.category ?? 'general'];
+  const isPast = isPastOnceReminder(reminder);
 
   return (
     <Pressable
@@ -162,6 +164,15 @@ export function ReminderCard({ reminder, onPress, onToggle, onDelete }: Reminder
           <View style={[styles.metaPill, isDark ? styles.daysPillDark : styles.daysPillLight]}>
             <Text style={[styles.daysText, isDark ? styles.daysTextDark : styles.daysTextLight]}>
               {reminder.days.join(' ')}
+            </Text>
+          </View>
+        )}
+
+        {/* Indicador de Fecha pasada para recordatorios de una sola vez expirados */}
+        {isPast && (
+          <View style={[styles.metaPill, isDark ? styles.pastPillDark : styles.pastPillLight]}>
+            <Text style={[styles.pastText, isDark ? styles.pastTextDark : styles.pastTextLight]}>
+              Fecha pasada
             </Text>
           </View>
         )}
@@ -323,5 +334,25 @@ const styles = StyleSheet.create({
   },
   daysTextDark: {
     color: '#93C5FD',
+  },
+  pastPillLight: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  pastPillDark: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  pastText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  pastTextLight: {
+    color: '#DC2626',
+  },
+  pastTextDark: {
+    color: '#F87171',
   },
 });

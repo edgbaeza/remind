@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -19,13 +19,16 @@ import { TestNotificationCard } from '@/components/reminders/test-notification-c
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useProfile } from '@/hooks/use-profile';
 import { useReminders } from '@/hooks/use-reminders';
+import { useTodayDate } from '@/hooks/use-today-date';
 import { Reminder } from '@/types/reminder';
+import { occursOnDate, sortTodayReminders, sortUpcomingReminders } from '@/utils/reminder-dates';
 
 export default function RemindersScreen() {
   const router = useRouter();
   const { profile } = useProfile();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
+  const { todayDate } = useTodayDate();
 
   const {
     reminders,
@@ -36,12 +39,29 @@ export default function RemindersScreen() {
     deleteReminder,
   } = useReminders();
 
+  const [activeFilter, setActiveFilter] = useState<'today' | 'upcoming'>('today');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [reminderToEdit, setReminderToEdit] = useState<Reminder | null>(null);
   const [reminderToDelete, setReminderToDelete] = useState<Reminder | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const activeCount = reminders.filter((r) => r.isActive).length;
+  // Filtrado y ordenamiento de recordatorios según el filtro activo
+  const todayReminders = useMemo(
+    () => sortTodayReminders(reminders.filter((r) => occursOnDate(r, todayDate))),
+    [reminders, todayDate]
+  );
+
+  const upcomingReminders = useMemo(
+    () =>
+      sortUpcomingReminders(
+        reminders.filter((r) => !occursOnDate(r, todayDate)),
+        todayDate
+      ),
+    [reminders, todayDate]
+  );
+
+  const displayedReminders = activeFilter === 'today' ? todayReminders : upcomingReminders;
+  const activeCount = displayedReminders.filter((r) => r.isActive).length;
   const bottomInset = Math.max(insets.bottom, 16);
 
   const handleOpenCreate = () => {
@@ -122,9 +142,66 @@ export default function RemindersScreen() {
           </View>
         </View>
 
+        {/* Selector de Filtros: Hoy / Próximos */}
+        <View style={styles.filterContainer}>
+          <Pressable
+            accessibilityLabel="Ver recordatorios de hoy"
+            accessibilityRole="button"
+            accessibilityState={{ selected: activeFilter === 'today' }}
+            onPress={() => setActiveFilter('today')}
+            style={({ pressed }) => [
+              styles.filterTab,
+              activeFilter === 'today'
+                ? styles.filterTabActive
+                : isDark
+                ? styles.filterTabInactiveDark
+                : styles.filterTabInactiveLight,
+              pressed && styles.filterTabPressed,
+            ]}>
+            <Text
+              style={[
+                styles.filterTabText,
+                activeFilter === 'today'
+                  ? styles.filterTabTextActive
+                  : isDark
+                  ? styles.filterTabTextInactiveDark
+                  : styles.filterTabTextInactiveLight,
+              ]}>
+              Hoy
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityLabel="Ver recordatorios próximos"
+            accessibilityRole="button"
+            accessibilityState={{ selected: activeFilter === 'upcoming' }}
+            onPress={() => setActiveFilter('upcoming')}
+            style={({ pressed }) => [
+              styles.filterTab,
+              activeFilter === 'upcoming'
+                ? styles.filterTabActive
+                : isDark
+                ? styles.filterTabInactiveDark
+                : styles.filterTabInactiveLight,
+              pressed && styles.filterTabPressed,
+            ]}>
+            <Text
+              style={[
+                styles.filterTabText,
+                activeFilter === 'upcoming'
+                  ? styles.filterTabTextActive
+                  : isDark
+                  ? styles.filterTabTextInactiveDark
+                  : styles.filterTabTextInactiveLight,
+              ]}>
+              Próximos
+            </Text>
+          </Pressable>
+        </View>
+
         {/* Lista de recordatorios */}
         <FlatList
-          data={reminders}
+          data={displayedReminders}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={<TestNotificationCard />}
           renderItem={({ item }) => (
@@ -150,12 +227,18 @@ export default function RemindersScreen() {
               </View>
             ) : (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>📝</Text>
+                <Text style={styles.emptyIcon}>
+                  {activeFilter === 'today' ? '☀️' : '📅'}
+                </Text>
                 <Text style={[styles.emptyTitle, isDark ? styles.titleDark : styles.titleLight]}>
-                  No tienes recordatorios
+                  {activeFilter === 'today'
+                    ? 'No tienes recordatorios para hoy'
+                    : 'No tienes otros recordatorios programados'}
                 </Text>
                 <Text style={[styles.emptySubtitle, isDark ? styles.subtitleDark : styles.subtitleLight]}>
-                  Pulsa &quot;+ Nuevo recordatorio&quot; para crear el primero.
+                  {activeFilter === 'today'
+                    ? 'Pulsa «+ Nuevo recordatorio» para programar uno.'
+                    : 'Los recordatorios para fechas posteriores aparecerán aquí.'}
                 </Text>
               </View>
             )
@@ -217,7 +300,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingTop: Spacing.two,
     paddingBottom: Spacing.two,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   titleColumn: {
     flex: 1,
@@ -270,8 +353,52 @@ const styles = StyleSheet.create({
   counterTextDark: {
     color: '#818CF8',
   },
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+    marginTop: 2,
+  },
+  filterTab: {
+    paddingVertical: 7,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterTabActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  filterTabInactiveLight: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+  },
+  filterTabInactiveDark: {
+    backgroundColor: '#181C24',
+    borderColor: '#2E384D',
+  },
+  filterTabPressed: {
+    opacity: 0.85,
+  },
+  filterTabText: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  filterTabTextActive: {
+    color: '#FFFFFF',
+  },
+  filterTabTextInactiveLight: {
+    color: '#64748B',
+  },
+  filterTabTextInactiveDark: {
+    color: '#94A3B8',
+  },
   listContainer: {
-    paddingTop: 6,
+    paddingTop: 4,
   },
   loadingContainer: {
     paddingVertical: 60,
