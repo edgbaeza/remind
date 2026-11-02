@@ -15,6 +15,7 @@ class MockStorageAdapter implements ProfileStorageAdapter {
   private store: Map<string, string> = new Map();
   public shouldFailRead = false;
   public shouldFailWrite = false;
+  public setItemCallCount = 0;
 
   async getItem(key: string): Promise<string | null> {
     if (this.shouldFailRead) {
@@ -24,6 +25,7 @@ class MockStorageAdapter implements ProfileStorageAdapter {
   }
 
   async setItem(key: string, value: string): Promise<void> {
+    this.setItemCallCount++;
     if (this.shouldFailWrite) {
       throw new Error('Simulated write I/O error');
     }
@@ -133,15 +135,18 @@ describe('Pruebas unitarias de Perfil de Usuario (profile-storage)', () => {
   });
 
   describe('3. Escritura y actualización de perfil (saveStoredProfile)', () => {
-    it('Guarda el nombre sanitizado en almacenamiento', async () => {
+    it('Guarda el nombre sanitizado en almacenamiento inicial vacío usando valores por defecto para el avatar', async () => {
       const adapter = new MockStorageAdapter();
       const saved = await saveStoredProfile({ name: '  Roberto  ' }, adapter);
 
       assert.equal(saved.name, 'Roberto');
+      assert.equal(saved.avatarType, 'default');
+      assert.equal(saved.avatarUri, undefined);
       assert.ok(saved.updatedAt);
 
       const retrieved = await getStoredProfile(adapter);
       assert.equal(retrieved.name, 'Roberto');
+      assert.equal(retrieved.avatarType, 'default');
     });
 
     it('Rechaza guardar nombre vacío sin alterar almacenamiento', async () => {
@@ -209,6 +214,51 @@ describe('Pruebas unitarias de Perfil de Usuario (profile-storage)', () => {
       const retrieved = await getStoredProfile(adapter);
       assert.equal(retrieved.avatarType, 'default');
       assert.equal(retrieved.avatarUri, undefined);
+    });
+
+    it('Detiene el guardado y NO ejecuta escritura si falla la lectura previa', async () => {
+      const adapter = new MockStorageAdapter();
+      // Guardar un perfil válido existente
+      await saveStoredProfile(
+        {
+          name: 'Usuario Previo',
+          avatarType: 'custom',
+          avatarUri: 'file:///photo.jpg',
+        },
+        adapter
+      );
+
+      adapter.setItemCallCount = 0; // Resetear contador de escrituras
+      adapter.shouldFailRead = true; // Activar fallo simulado de lectura I/O
+
+      // El intento de guardar debe fallar y propagar ProfileStorageError
+      await assert.rejects(
+        async () => await saveStoredProfile({ name: 'Nombre Modificado' }, adapter),
+        (err) => err instanceof ProfileStorageError
+      );
+
+      // Verificar que NO se ejecutó ninguna llamada a setItem
+      assert.equal(adapter.setItemCallCount, 0);
+
+      // Restaurar lectura y confirmar que los datos almacenados nunca se sobrescribieron
+      adapter.shouldFailRead = false;
+      const intact = await getStoredProfile(adapter);
+      assert.equal(intact.name, 'Usuario Previo');
+      assert.equal(intact.avatarType, 'custom');
+      assert.equal(intact.avatarUri, 'file:///photo.jpg');
+    });
+
+    it('Detiene el guardado y NO ejecuta escritura si el perfil guardado tiene JSON corrupto', async () => {
+      const adapter = new MockStorageAdapter();
+      await adapter.setItem(PROFILE_STORAGE_KEY, '{ json_invalido: ');
+      adapter.setItemCallCount = 0;
+
+      await assert.rejects(
+        async () => await saveStoredProfile({ name: 'Nuevo Nombre' }, adapter),
+        (err) => err instanceof ProfileStorageError
+      );
+
+      assert.equal(adapter.setItemCallCount, 0);
     });
 
     it('Lanza ProfileStorageError si falla la escritura', async () => {

@@ -104,17 +104,16 @@ export interface SaveProfileInput {
 /**
  * Guarda los datos del perfil localmente en AsyncStorage.
  * Permite actualizar selectivamente el nombre, el tipo de avatar y la URI de la fotografía.
+ * Si la lectura previa falla o detecta datos corruptos, detiene el guardado para evitar
+ * sobrescribir o perder los datos existentes.
  */
 export async function saveStoredProfile(
   profileData: SaveProfileInput,
   adapter: ProfileStorageAdapter = defaultAdapter
 ): Promise<UserProfile> {
-  let currentProfile: UserProfile = { ...DEFAULT_PROFILE };
-  try {
-    currentProfile = await getStoredProfile(adapter);
-  } catch {
-    // Si la lectura falla por almacenamiento vacío o inconsistente, se continúa con los valores base
-  }
+  // Obtener perfil actual; si falla la lectura o los datos están corruptos,
+  // la excepción se propaga y se detiene el proceso para evitar sobrescribir datos.
+  const currentProfile = await getStoredProfile(adapter);
 
   let finalName = currentProfile.name;
   if (profileData.name !== undefined) {

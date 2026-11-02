@@ -21,7 +21,15 @@ export function ProfileHeader({
   avatarUri,
   onPressSettings,
 }: ProfileHeaderProps) {
+  const [prevAvatarKey, setPrevAvatarKey] = useState(`${avatarType}:${avatarUri ?? ''}`);
   const [hasImageError, setHasImageError] = useState(false);
+
+  // Restablecer el estado de error de imagen si cambia el avatar o su URI
+  const currentAvatarKey = `${avatarType}:${avatarUri ?? ''}`;
+  if (currentAvatarKey !== prevAvatarKey) {
+    setPrevAvatarKey(currentAvatarKey);
+    setHasImageError(false);
+  }
 
   const shouldShowCustomPhoto =
     avatarType === 'custom' && Boolean(avatarUri) && !hasImageError;
