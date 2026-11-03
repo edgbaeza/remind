@@ -40,6 +40,8 @@ export default function CalendarScreen() {
     updateReminder,
     toggleReminder,
     deleteReminder,
+    toggleCompletion,
+    isCompletedOnDate,
   } = useReminders();
 
   const [displayedYear, setDisplayedYear] = useState<number>(() => todayDate.getFullYear());
@@ -392,15 +394,26 @@ export default function CalendarScreen() {
             </View>
           ) : (
             <View style={styles.remindersList}>
-              {selectedDayReminders.map((reminder) => (
-                <ReminderCard
-                  key={reminder.id}
-                  onDelete={handleRequestDelete}
-                  onPress={handleOpenEdit}
-                  onToggle={toggleReminder}
-                  reminder={reminder}
-                />
-              ))}
+              {selectedDayReminders.map((reminder) => {
+                const isSelectedToday = selectedDateStr === todayStr;
+                const isSelectedPast = selectedDateStr < todayStr;
+                const isCompleted = isCompletedOnDate(reminder.id, selectedDateStr);
+
+                return (
+                  <ReminderCard
+                    key={reminder.id}
+                    dateKey={selectedDateStr}
+                    isCompleted={isCompleted}
+                    isHistoricalCompletion={isSelectedPast && isCompleted}
+                    onDelete={handleRequestDelete}
+                    onPress={handleOpenEdit}
+                    onToggle={toggleReminder}
+                    onToggleCompletion={toggleCompletion}
+                    reminder={reminder}
+                    showCompletionAction={isSelectedToday}
+                  />
+                );
+              })}
             </View>
           )}
         </View>

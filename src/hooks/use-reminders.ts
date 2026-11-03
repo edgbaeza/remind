@@ -15,7 +15,14 @@ import {
   getStoredReminders,
   saveStoredReminders,
 } from '@/services/reminder-storage';
+import {
+  getStoredCompletions,
+  isReminderCompleted,
+  saveStoredCompletions,
+} from '@/services/completion-storage';
+import { ReminderCompletion } from '@/types/completion';
 import { Reminder } from '@/types/reminder';
+import { getLocalDateString, occursOnDate } from '@/utils/reminder-dates';
 
 export type { RemindersContextValue };
 
@@ -26,21 +33,29 @@ export type { RemindersContextValue };
  */
 export function useRemindersController(): RemindersContextValue {
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [completions, setCompletions] = useState<ReminderCompletion[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Referencia mutable al estado más reciente para evitar cierres obsoletos (stale closures)
   const remindersRef = useRef<Reminder[]>([]);
-  // Cola secuencial FIFO para serializar todas las operaciones asíncronas de almacenamiento
+  const completionsRef = useRef<ReminderCompletion[]>([]);
+  // Cola secuencial FIFO para serializar todas las operaciones asíncronas de recordatorios
   const queueRef = useRef<AsyncQueue>(new AsyncQueue());
+  // Cola secuencial FIFO para serializar operaciones asíncronas de cumplimientos
+  const completionQueueRef = useRef<AsyncQueue>(new AsyncQueue());
   const isMountedRef = useRef<boolean>(true);
 
-  // Carga inicial y reconciliación de notificaciones con recordatorios persistidos
+  // Carga inicial y reconciliación de notificaciones con recordatorios persistidos y cumplimientos
   useEffect(() => {
     isMountedRef.current = true;
 
     async function loadData() {
       try {
-        const loadedReminders = await getStoredReminders();
+        const [loadedReminders, loadedCompletions] = await Promise.all([
+          getStoredReminders(),
+          getStoredCompletions(),
+        ]);
+
         const reconciledReminders = await reconcileScheduledNotifications(loadedReminders);
 
         // Guardar si hubo cambios en los IDs tras la reconciliación
@@ -52,13 +67,15 @@ export function useRemindersController(): RemindersContextValue {
         if (isMountedRef.current) {
           remindersRef.current = reconciledReminders;
           setReminders(reconciledReminders);
+          completionsRef.current = loadedCompletions;
+          setCompletions(loadedCompletions);
         }
       } catch (err) {
         console.error('[useReminders] Error durante la carga inicial:', err);
         if (isMountedRef.current) {
           Alert.alert(
             'Error de almacenamiento',
-            'No fue posible leer los recordatorios guardados. Por seguridad, no se han alterado tus notificaciones programadas.'
+            'No fue posible leer los datos guardados. Por seguridad, no se han alterado tus notificaciones programadas.'
           );
         }
       } finally {
@@ -353,6 +370,90 @@ export function useRemindersController(): RemindersContextValue {
     [isLoading]
   );
 
+  const toggleCompletion = useCallback(
+    async (reminderId: string, dateKey: string): Promise<boolean> => {
+      if (isLoading) return false;
+
+      return completionQueueRef.current.enqueue(async () => {
+        const todayKey = getLocalDateString();
+
+        // Regla: No permitir completar fechas futuras
+        if (dateKey > todayKey) {
+          return false;
+        }
+
+        // Regla: En esta primera versión, permitir completar o deshacer solamente las ocurrencias de hoy
+        if (dateKey !== todayKey) {
+          return false;
+        }
+
+        const reminder = remindersRef.current.find((item) => item.id === reminderId);
+        if (!reminder) {
+          return false;
+        }
+
+        const currentCompletions = completionsRef.current;
+        const alreadyCompleted = isReminderCompleted(currentCompletions, reminderId, dateKey);
+
+        // Regla: Los recordatorios pausados no pueden marcarse como nuevos cumplimientos
+        if (!reminder.isActive && !alreadyCompleted) {
+          Alert.alert(
+            'Recordatorio pausado',
+            'Para marcar este recordatorio como completado, actívalo primero.'
+          );
+          return false;
+        }
+
+        // Regla: Verificar que el recordatorio corresponda a la fecha solicitada
+        if (!occursOnDate(reminder, new Date())) {
+          return false;
+        }
+
+        let updatedCompletions: ReminderCompletion[];
+
+        if (alreadyCompleted) {
+          // Deshacer cumplimiento
+          updatedCompletions = currentCompletions.filter(
+            (c) => !(c.reminderId === reminderId && c.dateKey === dateKey)
+          );
+        } else {
+          // Marcar como completado (máximo un cumplimiento por recordatorio y fecha)
+          const newCompletion: ReminderCompletion = {
+            reminderId,
+            dateKey,
+            completedAt: Date.now(),
+          };
+          updatedCompletions = [newCompletion, ...currentCompletions];
+        }
+
+        // Persistir primero antes de actualizar la UI
+        const saved = await saveStoredCompletions(updatedCompletions);
+        if (!saved) {
+          Alert.alert(
+            'Error al guardar',
+            'No se pudo registrar el cumplimiento en el almacenamiento del dispositivo.'
+          );
+          return false;
+        }
+
+        completionsRef.current = updatedCompletions;
+        if (isMountedRef.current) {
+          setCompletions(updatedCompletions);
+        }
+
+        return true;
+      });
+    },
+    [isLoading]
+  );
+
+  const isCompletedOnDate = useCallback(
+    (reminderId: string, dateKey: string): boolean => {
+      return isReminderCompleted(completions, reminderId, dateKey);
+    },
+    [completions]
+  );
+
   return useMemo(
     () => ({
       reminders,
@@ -361,8 +462,21 @@ export function useRemindersController(): RemindersContextValue {
       updateReminder,
       toggleReminder,
       deleteReminder,
+      completions,
+      toggleCompletion,
+      isCompletedOnDate,
     }),
-    [reminders, isLoading, addReminder, updateReminder, toggleReminder, deleteReminder]
+    [
+      reminders,
+      isLoading,
+      addReminder,
+      updateReminder,
+      toggleReminder,
+      deleteReminder,
+      completions,
+      toggleCompletion,
+      isCompletedOnDate,
+    ]
   );
 }
 

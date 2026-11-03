@@ -1,5 +1,6 @@
 import React, { createContext, useContext } from 'react';
 
+import type { ReminderCompletion } from '../types/completion.ts';
 import type { Reminder } from '../types/reminder.ts';
 
 export interface RemindersContextValue {
@@ -12,6 +13,11 @@ export interface RemindersContextValue {
   ) => Promise<void>;
   toggleReminder: (id: string) => Promise<void>;
   deleteReminder: (id: string) => Promise<void>;
+
+  // Cumplimientos de ocurrencias de recordatorios
+  completions: ReminderCompletion[];
+  toggleCompletion: (reminderId: string, dateKey: string) => Promise<boolean>;
+  isCompletedOnDate: (reminderId: string, dateKey: string) => boolean;
 }
 
 export const RemindersContext = createContext<RemindersContextValue | undefined>(undefined);

@@ -9,6 +9,7 @@ import {
   useRemindersContext,
 } from '../context/reminders-context-core.ts';
 import { AsyncQueue } from '../services/reminder-storage.ts';
+import type { ReminderCompletion } from '../types/completion.ts';
 import type { Reminder } from '../types/reminder.ts';
 
 /**
@@ -17,6 +18,7 @@ import type { Reminder } from '../types/reminder.ts';
  */
 function createMockRemindersController(initialData: Reminder[] = []) {
   let reminders: Reminder[] = [...initialData];
+  let completions: ReminderCompletion[] = [];
   let isLoading = true;
   let loadCount = 0;
   let reconcileCount = 0;
@@ -59,6 +61,25 @@ function createMockRemindersController(initialData: Reminder[] = []) {
       await queue.enqueue(async () => {
         reminders = reminders.filter((item) => item.id !== id);
       });
+    },
+    completions,
+    toggleCompletion: async (reminderId: string, dateKey: string) => {
+      return queue.enqueue(async () => {
+        const already = completions.some(
+          (c) => c.reminderId === reminderId && c.dateKey === dateKey
+        );
+        if (already) {
+          completions = completions.filter(
+            (c) => !(c.reminderId === reminderId && c.dateKey === dateKey)
+          );
+        } else {
+          completions = [{ reminderId, dateKey, completedAt: Date.now() }, ...completions];
+        }
+        return true;
+      });
+    },
+    isCompletedOnDate: (reminderId: string, dateKey: string) => {
+      return completions.some((c) => c.reminderId === reminderId && c.dateKey === dateKey);
     },
   });
 
@@ -211,5 +232,70 @@ describe('Pruebas unitarias de Estado Compartido de Recordatorios (RemindersCont
       loadCount: 1,
       reconcileCount: 1,
     });
+  });
+
+  it('Sincronización de cumplimientos entre Inicio y Calendario sin re-instanciación', async () => {
+    const controller = createMockRemindersController([
+      {
+        id: 'rem-daily',
+        title: 'Tomar vitamina',
+        time: '08:00 AM',
+        frequency: 'Todos los días',
+        repeatType: 'daily',
+        isActive: true,
+        category: 'salud',
+        createdAt: 1000,
+      },
+    ]);
+    await controller.initialize();
+
+    let inicioState: RemindersContextValue | null = null;
+    let calendarioState: RemindersContextValue | null = null;
+
+    function InicioConsumer() {
+      inicioState = useRemindersContext();
+      return null;
+    }
+
+    function CalendarioConsumer() {
+      calendarioState = useRemindersContext();
+      return null;
+    }
+
+    const renderBoth = () => {
+      renderToStaticMarkup(
+        React.createElement(
+          RemindersContextProvider,
+          { value: controller.getValue() },
+          React.createElement(InicioConsumer),
+          React.createElement(CalendarioConsumer)
+        )
+      );
+    };
+
+    renderBoth();
+    const todayStr = '2026-11-02';
+
+    // Inicialmente no completado en ninguna pantalla
+    assert.equal(inicioState!.isCompletedOnDate('rem-daily', todayStr), false);
+    assert.equal(calendarioState!.isCompletedOnDate('rem-daily', todayStr), false);
+
+    // 1. Completar desde Inicio
+    await inicioState!.toggleCompletion('rem-daily', todayStr);
+    renderBoth();
+
+    // Ambas pantallas ven inmediatamente el cumplimiento
+    assert.equal(inicioState!.isCompletedOnDate('rem-daily', todayStr), true);
+    assert.equal(calendarioState!.isCompletedOnDate('rem-daily', todayStr), true);
+    assert.equal(calendarioState!.completions.length, 1);
+    assert.equal(calendarioState!.completions[0].reminderId, 'rem-daily');
+
+    // 2. Deshacer desde Calendario
+    await calendarioState!.toggleCompletion('rem-daily', todayStr);
+    renderBoth();
+
+    assert.equal(inicioState!.isCompletedOnDate('rem-daily', todayStr), false);
+    assert.equal(calendarioState!.isCompletedOnDate('rem-daily', todayStr), false);
+    assert.equal(inicioState!.completions.length, 0);
   });
 });

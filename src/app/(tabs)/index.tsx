@@ -26,7 +26,7 @@ export default function RemindersScreen() {
   const router = useRouter();
   const { profile } = useProfile();
   const isDark = useColorScheme() === 'dark';
-  const { todayDate } = useTodayDate();
+  const { todayDate, todayStr } = useTodayDate();
 
   const {
     reminders,
@@ -35,6 +35,8 @@ export default function RemindersScreen() {
     updateReminder,
     toggleReminder,
     deleteReminder,
+    toggleCompletion,
+    isCompletedOnDate,
   } = useReminders();
 
   const [activeFilter, setActiveFilter] = useState<'today' | 'upcoming'>('today');
@@ -206,6 +208,10 @@ export default function RemindersScreen() {
               onPress={handleOpenEdit}
               onToggle={toggleReminder}
               onDelete={handleRequestDelete}
+              dateKey={todayStr}
+              isCompleted={isCompletedOnDate(item.id, todayStr)}
+              showCompletionAction={activeFilter === 'today'}
+              onToggleCompletion={toggleCompletion}
             />
           )}
           contentContainerStyle={styles.listContainer}
