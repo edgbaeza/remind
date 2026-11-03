@@ -151,7 +151,7 @@ export interface Reminder {
 
 ## 6. Persistencia con AsyncStorage
 
-Ubicación: `src/services/reminder-storage.ts`
+### 6.1 Recordatorios (`src/services/reminder-storage.ts`)
 
 - **Claves de almacenamiento**:
   - `@remind_app/reminders_v1`: Arreglo serializado en JSON con todos los recordatorios.
@@ -160,6 +160,31 @@ Ubicación: `src/services/reminder-storage.ts`
 - **Diferenciación estricta entre error y lista vacía**: La función `getStoredReminders` lanza `StorageReadError` ante fallos de I/O o datos JSON corruptos. Esto impide que un fallo transitorio de lectura sea interpretado como una lista vacía, protegiendo las notificaciones programadas contra cancelaciones erróneas.
 - **Cola asíncrona secuencial (`AsyncQueue`)**: Todas las escrituras y modificaciones (`addReminder`, `updateReminder`, `toggleReminder`, `deleteReminder`) se procesan secuencialmente en orden FIFO. Se eliminaron todos los efectos secundarios dentro de actualizadores de estado de React, evitando condiciones de carrera y escrituras fuera de orden cuando se interactúa rápidamente con la interfaz.
 - **Migración transparente (`migrateReminder`)**: Si un recordatorio antiguo carece de `repeatType`, la función analiza el texto de `frequency` o el arreglo `days` y deduce de forma determinista el tipo (`monthly`, `weekly`, `once` o `daily`), rellenando `dayOfMonth`, `targetDate` o `days` sin pérdida de información.
+
+### 6.2 Historial de Cumplimientos (`src/services/completion-storage.ts`)
+
+- **Propósito**: Registro desacoplado de ocurrencias completadas (`ReminderCompletion`), base para futuras rachas de hábitos.
+- **Clave de almacenamiento**: `@remind_app/completions_v1`.
+- **Estructura versionada**:
+  ```json
+  {
+    "version": 1,
+    "completions": [
+      {
+        "reminderId": "string",
+        "dateKey": "YYYY-MM-DD",
+        "completedAt": 1793667600000
+      }
+    ]
+  }
+  ```
+- **Reglas clave**:
+  - Máximo 1 cumplimiento por recordatorio y fecha local (`dateKey`).
+  - No altera ni cancela las notificaciones programadas de los recordatorios.
+  - Solo permite marcar o deshacer ocurrencias de la fecha actual (`hoy`).
+  - Prohíbe completar fechas futuras.
+  - Los recordatorios pausados conservan su historial pero no pueden marcarse como nuevos cumplimientos hasta reactivarse.
+  - Manejo de errores con `CompletionStorageReadError` para evitar pérdidas de historial.
 
 ---
 
