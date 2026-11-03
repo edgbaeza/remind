@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "mobile-design": {
+      "source": "RubenGlez/mobile-design",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "6fd8eb2016eb087a236c6417f5876fd5de5785f30c53408fb8562cc86fe93e41"
+    }
+  }
+}
