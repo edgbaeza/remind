@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import React from 'react';
 import {
   Pressable,
@@ -93,7 +94,6 @@ export function ReminderCard({
         styles.card,
         isDark ? styles.cardDark : styles.cardLight,
         !reminder.isActive && styles.cardInactive,
-        isCompleted && (isDark ? styles.cardCompletedDark : styles.cardCompletedLight),
         pressed && styles.cardPressed,
       ]}>
       {/* Fila 1: Categoría a la izquierda, Estado + Switch + Eliminar a la derecha */}
@@ -194,81 +194,146 @@ export function ReminderCard({
         )}
       </View>
 
-      {/* Fila 4: Acción de cumplimiento (Hoy) o Indicador histórico (Calendario pasado) */}
+      {/* Fila 4: Acción de cumplimiento compacta (Hoy) o Indicador histórico (Calendario pasado) */}
       {showCompletionAction && (
         <View
           onStartShouldSetResponder={() => true}
-          style={styles.completionContainer}>
-          <Pressable
-            accessibilityLabel={
-              !reminder.isActive
-                ? isCompleted
-                  ? 'Completado hoy. Recordatorio pausado.'
-                  : 'Recordatorio pausado. Actívalo para marcarlo como completado.'
-                : isCompleted
-                ? 'Completado hoy. Toca para deshacer.'
-                : 'Marcar recordatorio como completado'
-            }
-            accessibilityRole="checkbox"
-            accessibilityState={{
-              checked: isCompleted,
-              disabled: !reminder.isActive && !isCompleted,
-            }}
-            disabled={!reminder.isActive && !isCompleted}
-            hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
-            onPress={(e) => {
-              e.stopPropagation();
-              if (onToggleCompletion && dateKey) {
-                onToggleCompletion(reminder.id, dateKey);
+          style={styles.actionRow}>
+          {isCompleted ? (
+            <View style={styles.completedContainer}>
+              <View style={styles.completedBadge}>
+                <SymbolView
+                  fallback={
+                    <Text
+                      style={[
+                        styles.checkIconFallback,
+                        isDark ? styles.iconGreenDark : styles.iconGreenLight,
+                      ]}>
+                      ✓
+                    </Text>
+                  }
+                  name={{
+                    ios: 'checkmark.circle.fill',
+                    android: 'check_circle',
+                    web: 'check_circle',
+                  }}
+                  size={16}
+                  tintColor={isDark ? '#10B981' : '#059669'}
+                />
+                <Text
+                  style={[
+                    styles.completedLabel,
+                    isDark ? styles.textGreenDark : styles.textGreenLight,
+                  ]}>
+                  Completado
+                </Text>
+              </View>
+
+              {reminder.isActive && (
+                <Pressable
+                  accessibilityLabel="Deshacer cumplimiento del recordatorio"
+                  accessibilityRole="button"
+                  hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    if (onToggleCompletion && dateKey) {
+                      onToggleCompletion(reminder.id, dateKey);
+                    }
+                  }}
+                  style={({ pressed }) => [
+                    styles.undoButton,
+                    pressed && styles.buttonPressed,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.undoText,
+                      isDark ? styles.undoTextDark : styles.undoTextLight,
+                    ]}>
+                    Deshacer
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <Pressable
+              accessibilityLabel={
+                reminder.isActive
+                  ? 'Completar recordatorio'
+                  : 'Recordatorio pausado. Actívalo para completarlo.'
               }
-            }}
-            style={({ pressed }) => [
-              styles.completionBtn,
-              isCompleted
-                ? (isDark ? styles.completionBtnDoneDark : styles.completionBtnDoneLight)
-                : (isDark ? styles.completionBtnPendingDark : styles.completionBtnPendingLight),
-              !reminder.isActive && !isCompleted && styles.completionBtnDisabled,
-              pressed && reminder.isActive && styles.completionBtnPressed,
-            ]}>
-            <Text
-              style={[
-                styles.completionCheckIcon,
-                isCompleted
-                  ? (isDark ? styles.completionCheckIconDoneDark : styles.completionCheckIconDoneLight)
-                  : (isDark ? styles.completionCheckIconPendingDark : styles.completionCheckIconPendingLight),
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !reminder.isActive }}
+              disabled={!reminder.isActive}
+              hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+              onPress={(e) => {
+                e.stopPropagation();
+                if (onToggleCompletion && dateKey) {
+                  onToggleCompletion(reminder.id, dateKey);
+                }
+              }}
+              style={({ pressed }) => [
+                styles.pendingPill,
+                isDark ? styles.pendingPillDark : styles.pendingPillLight,
+                !reminder.isActive && styles.pendingPillDisabled,
+                pressed && reminder.isActive && styles.buttonPressed,
               ]}>
-              {isCompleted ? '✓' : '○'}
-            </Text>
-            <Text
-              style={[
-                styles.completionBtnText,
-                isCompleted
-                  ? (isDark ? styles.completionTextDoneDark : styles.completionTextDoneLight)
-                  : (isDark ? styles.completionTextPendingDark : styles.completionTextPendingLight),
-              ]}>
-              {isCompleted ? 'Completado hoy' : 'Marcar como completado'}
-            </Text>
-            {isCompleted && reminder.isActive && (
+              <SymbolView
+                fallback={
+                  <Text
+                    style={[
+                      styles.circleIconFallback,
+                      isDark ? styles.circleIconFallbackDark : styles.circleIconFallbackLight,
+                    ]}>
+                    ○
+                  </Text>
+                }
+                name={{
+                  ios: 'circle',
+                  android: 'radio_button_unchecked',
+                  web: 'radio_button_unchecked',
+                }}
+                size={14}
+                tintColor={isDark ? '#9CA3AF' : '#6B7280'}
+              />
               <Text
                 style={[
-                  styles.undoHintText,
-                  isDark ? styles.undoHintTextDark : styles.undoHintTextLight,
+                  styles.pendingPillText,
+                  isDark ? styles.pendingPillTextDark : styles.pendingPillTextLight,
                 ]}>
-                (Deshacer)
+                Completar
               </Text>
-            )}
-          </Pressable>
+            </Pressable>
+          )}
         </View>
       )}
 
       {isHistoricalCompletion && !showCompletionAction && (
-        <View style={styles.completionContainer}>
-          <View style={[styles.historicalBadge, isDark ? styles.historicalBadgeDark : styles.historicalBadgeLight]}>
-            <Text style={[styles.completionCheckIcon, isDark ? styles.completionCheckIconDoneDark : styles.completionCheckIconDoneLight]}>
-              ✓
-            </Text>
-            <Text style={[styles.completionBtnText, isDark ? styles.completionTextDoneDark : styles.completionTextDoneLight]}>
-              Completado en esta fecha
+        <View style={styles.actionRow}>
+          <View style={styles.historicalBadge}>
+            <SymbolView
+              fallback={
+                <Text
+                  style={[
+                    styles.checkIconFallback,
+                    isDark ? styles.iconGreenDark : styles.iconGreenLight,
+                  ]}>
+                  ✓
+                </Text>
+              }
+              name={{
+                ios: 'checkmark.circle.fill',
+                android: 'check_circle',
+                web: 'check_circle',
+              }}
+              size={15}
+              tintColor={isDark ? '#10B981' : '#059669'}
+            />
+            <Text
+              style={[
+                styles.completedLabel,
+                isDark ? styles.textGreenDark : styles.textGreenLight,
+              ]}>
+              Completado
             </Text>
           </View>
         </View>
@@ -297,16 +362,6 @@ const styles = StyleSheet.create({
   cardDark: {
     backgroundColor: '#1C1F26',
     borderColor: '#2B303C',
-  },
-  cardCompletedLight: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#059669',
-    borderColor: 'rgba(5, 150, 105, 0.4)',
-  },
-  cardCompletedDark: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#10B981',
-    borderColor: 'rgba(16, 185, 129, 0.45)',
   },
   cardInactive: {
     opacity: 0.65,
@@ -461,103 +516,105 @@ const styles = StyleSheet.create({
   pastTextDark: {
     color: '#F87171',
   },
-  completionContainer: {
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#2B303C',
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 8,
   },
-  completionBtn: {
+  pendingPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    minHeight: 44,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+    borderRadius: 9999,
     borderWidth: 1,
-    gap: 8,
+    minHeight: 28,
   },
-  completionBtnDoneLight: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
-  },
-  completionBtnDoneDark: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-  },
-  completionBtnPendingLight: {
-    backgroundColor: '#F9FAFB',
-    borderColor: '#E5E7EB',
-  },
-  completionBtnPendingDark: {
+  pendingPillDark: {
     backgroundColor: 'rgba(255, 255, 255, 0.04)',
     borderColor: '#374151',
   },
-  completionBtnDisabled: {
+  pendingPillLight: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+  },
+  pendingPillDisabled: {
     opacity: 0.45,
   },
-  completionBtnPressed: {
-    opacity: 0.8,
+  buttonPressed: {
+    opacity: 0.65,
   },
-  completionCheckIcon: {
-    fontSize: 14,
-    fontWeight: '700',
+  pendingPillText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
-  completionCheckIconDoneLight: {
-    color: '#059669',
+  pendingPillTextDark: {
+    color: '#D1D5DB',
   },
-  completionCheckIconDoneDark: {
-    color: '#34D399',
+  pendingPillTextLight: {
+    color: '#4B5563',
   },
-  completionCheckIconPendingLight: {
-    color: '#6B7280',
+  circleIconFallback: {
+    fontSize: 12,
+    lineHeight: 14,
   },
-  completionCheckIconPendingDark: {
+  circleIconFallbackDark: {
     color: '#9CA3AF',
   },
-  completionBtnText: {
+  circleIconFallbackLight: {
+    color: '#6B7280',
+  },
+  completedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  checkIconFallback: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 15,
+  },
+  iconGreenDark: {
+    color: '#10B981',
+  },
+  iconGreenLight: {
+    color: '#059669',
+  },
+  completedLabel: {
     fontSize: 12,
     fontWeight: '600',
   },
-  completionTextDoneLight: {
-    color: '#065F46',
+  textGreenDark: {
+    color: '#10B981',
   },
-  completionTextDoneDark: {
-    color: '#34D399',
-  },
-  completionTextPendingLight: {
-    color: '#374151',
-  },
-  completionTextPendingDark: {
-    color: '#D1D5DB',
-  },
-  undoHintText: {
-    fontSize: 11,
-    fontWeight: '500',
-    marginLeft: 'auto',
-  },
-  undoHintTextLight: {
+  textGreenLight: {
     color: '#059669',
   },
-  undoHintTextDark: {
-    color: '#6EE7B7',
+  undoButton: {
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+  },
+  undoText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  undoTextDark: {
+    color: '#9CA3AF',
+  },
+  undoTextLight: {
+    color: '#6B7280',
   },
   historicalBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  historicalBadgeLight: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
-  },
-  historicalBadgeDark: {
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-    borderColor: 'rgba(16, 185, 129, 0.35)',
+    gap: 5,
   },
 });
